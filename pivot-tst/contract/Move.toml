@@ -1,0 +1,12 @@
+[package]
+name = "pivot_market_sst"
+version = "1.2.0"
+authors = []
+
+[addresses]
+pivot_market_sst = "0x986a7c58eca5fe84a7fdf73b02953bc3faab2c9778f82aeab7eefa43242168a2"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-framework.git", rev = "mainnet", subdir = "aptos-framework" }
+
+[dev-dependencies]

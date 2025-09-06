@@ -1,0 +1,21 @@
+# Core dependencies
+pandas>=1.5.0
+requests>=2.28.0
+schedule>=1.2.0
+
+# data source APIs
+praw>=7.7.0  # Reddit API
+pytrends>=4.9.0  # Google Trends
+feedparser>=6.0.10  # RSS feeds
+beautifulsoup4>=4.12.0  # Web scraping
+
+# AI/ML for sentiment analysis
+transformers>=4.21.0
+torch>=1.12.0
+openai>=0.27.0  # Optional
+
+# Aptos SDK
+aptos-sdk>=0.6.0
+
+# Logging and utilities
+python-dotenv>=0.20.0
