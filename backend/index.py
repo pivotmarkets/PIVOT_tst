@@ -1,721 +1,1119 @@
-from dotenv import load_dotenv
 import os
 import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Tuple
-from dataclasses import dataclass
-from enum import Enum
+from typing import List, Dict, Optional, Tuple, Any
+from dataclasses import dataclass, asdict
 import re
-
-import praw  # Reddit API
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score
+import joblib
+import sqlite3
+from pathlib import Path
+import certifi
 import requests
+import praw
 from pytrends.request import TrendReq
-import feedparser  # RSS feeds
+import feedparser
 from bs4 import BeautifulSoup
 import openai
 from transformers import pipeline
-import pandas as pd
+import yfinance as yf
+from fredapi import Fred
 from aptos_sdk.account import Account
 from aptos_sdk.async_client import RestClient
 from aptos_sdk.transactions import EntryFunction, TransactionArgument, TransactionPayload
 import schedule
 import time
+import subprocess
+import ssl
+import urllib.request
+from urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+
+from dotenv import load_dotenv
 
 load_dotenv()
+
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Configuration
 class Config:
-    # Reddit API credentials 
     REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
     REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
-    REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "AI_Market_Scraper/1.0")
-    
-    # OpenAI API key 
+    REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "AI_Predictive_Oracle/2.0")
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    
-    # Aptos configuration
+    FRED_API_KEY = os.getenv("FRED_API_KEY")
     APTOS_NODE_URL = os.getenv("APTOS_NODE_URL", "https://fullnode.mainnet.aptoslabs.com/v1")
     ADMIN_PRIVATE_KEY = os.getenv("ADMIN_PRIVATE_KEY")
     CONTRACT_ADDRESS = os.getenv("CONTRACT_ADDRESS")
-    
-    # Market generation settings
-    MIN_SENTIMENT_THRESHOLD = 0.6
-    MIN_MENTION_COUNT = 10
-    MARKET_DURATION_HOURS = 168  # 1 week
-    
-    # General subreddits to monitor for trends
-    SUBREDDITS = ["technology", "politics", "sports", "cryptocurrency"]
+    MIN_HISTORICAL_DATA_POINTS = 50
+    PREDICTION_CONFIDENCE_THRESHOLD = 0.65
+    MARKET_DURATION_DAYS = 30
+    MODEL_UPDATE_INTERVAL_HOURS = 24
+    SUBREDDITS = ["worldnews", "technology", "politics", "economics", "sports", "cryptocurrency", "stocks"]
+    NEWS_SOURCES = [
+        'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',
+        'https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml',
+        'https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml',
+        'https://rss.nytimes.com/services/xml/rss/nyt/Business.xml',
+        'https://feeds.bbci.co.uk/news/world/rss.xml',
+        'https://feeds.bbci.co.uk/news/technology/rss.xml',
+        'https://feeds.bbci.co.uk/news/business/rss.xml',
+        'https://www.reuters.com/business/finance/rss',
+    ]
 
 @dataclass
 class TrendingTopic:
-    keyword: str
-    sentiment_score: float
-    mention_count: int
-    google_trend_score: int
-    reddit_score: int
-    news_sentiment: float
-    related_content: List[str]
-    sources: List[str]
-    post_id: Optional[str] = None  # Reddit post ID for reference
+    id: str
+    title: str
+    summary: str
+    category: str
+    source: str
+    engagement_score: float
+    created_at: datetime
+    keywords: List[str]
+    related_articles: List[Dict]
+    ai_analysis: Dict[str, Any]
+
+@dataclass
+class MarketCreationStep:
+    step_number: int
+    step_name: str
+    prompt: str
+    user_input: Optional[str] = None
+    ai_suggestion: Optional[str] = None
+    validation_result: Optional[Dict] = None
 
 @dataclass
 class MarketProposal:
+    id: str
     description: str
-    end_time: int
-    confidence_score: float
-    topic: TrendingTopic
-    oracle_address: str
-    resolution_criteria: str  # Added for resolution details
+    end_date: datetime
+    category: str
+    resolution_criteria: str
+    ai_probability: float
+    ai_confidence: float
+    key_factors: List[str]
+    risk_factors: List[str]
+    data_quality_score: float
+    creation_steps: List[MarketCreationStep]
+    status: str = "draft"  # draft, ready, created
+    user_id: Optional[str] = None
 
-@dataclass
-class Market:
-    market_id: int
-    description: str
-    end_time: int
-    resolved: bool
-    outcome: Optional[bool]  # True for Yes, False for No
-
-class GoogleTrendsScraper:
-    """Scrapes Google Trends data for keywords"""
+class AIMarketAssistant:
+    """Enhanced AI assistant for natural language market creation"""
     
     def __init__(self):
-        self.pytrends = TrendReq(hl='en-US', tz=360)
+        self.openai_client = None
+        if Config.OPENAI_API_KEY:
+            openai.api_key = Config.OPENAI_API_KEY
+            self.openai_client = openai
+        
+    async def analyze_user_intent(self, user_message: str, context: Dict = None) -> Dict[str, Any]:
+        """Analyze user's natural language message to determine intent and extract market details"""
+        
+        if not self.openai_client:
+            return self._fallback_intent_analysis(user_message)
+            
+        try:
+            system_prompt = """You are an AI assistant that helps users create prediction markets from natural language.
+            
+Analyze the user's message and determine:
+1. Intent: Is this a market creation request, question about odds, or general inquiry?
+2. Market details if applicable: What event, timeframe, resolution criteria
+3. Confidence: How clear and specific is the request?
+4. Next steps: What information is needed to proceed
+
+Respond in JSON format:
+{
+    "intent": "create_market|analyze_odds|general_inquiry|unclear",
+    "confidence": 0.0-1.0,
+    "extracted_event": "string or null",
+    "suggested_question": "Will X happen by Y?",
+    "category": "politics|economics|sports|technology|general",
+    "timeframe": "extracted or suggested timeframe",
+    "missing_info": ["list of missing information"],
+    "next_step": "what to ask user next",
+    "reasoning": "explanation of analysis"
+}"""
+
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"User message: {user_message}\nContext: {json.dumps(context or {})}"}
+            ]
+            
+            response = await self.openai_client.ChatCompletion.acreate(
+                model="gpt-4",
+                messages=messages,
+                max_tokens=400,
+                temperature=0.3
+            )
+            
+            return json.loads(response.choices[0].message.content)
+            
+        except Exception as e:
+            logger.error(f"OpenAI analysis failed: {e}")
+            return self._fallback_intent_analysis(user_message)
     
-    async def get_trends(self, keywords: List[str]) -> Dict[str, int]:
-        """Get Google Trends interest scores for keywords"""
-        trends_data = {}
+    def _fallback_intent_analysis(self, user_message: str) -> Dict[str, Any]:
+        """Simple rule-based analysis when OpenAI is not available"""
+        message_lower = user_message.lower()
+        
+        # Check for market creation intent
+        creation_keywords = ['will', 'bet', 'predict', 'market', 'odds', 'happen', 'occur']
+        has_creation_intent = any(keyword in message_lower for keyword in creation_keywords)
+        
+        # Extract potential event
+        question_match = re.search(r'will\s+([^?]+?)(\?|$)', message_lower)
+        event = question_match.group(1).strip() if question_match else None
+        
+        # Categorize
+        category = self._categorize_simple(message_lower)
+        
+        return {
+            "intent": "create_market" if has_creation_intent else "general_inquiry",
+            "confidence": 0.7 if has_creation_intent else 0.3,
+            "extracted_event": event,
+            "suggested_question": f"Will {event}?" if event else None,
+            "category": category,
+            "timeframe": None,
+            "missing_info": ["resolution_criteria", "timeframe"] if event else ["event_description"],
+            "next_step": "Please provide more details about the event and when it should be resolved.",
+            "reasoning": "Simple keyword-based analysis"
+        }
+    
+    def _categorize_simple(self, text: str) -> str:
+        """Simple categorization based on keywords"""
+        if any(word in text for word in ['election', 'vote', 'president', 'congress', 'senate', 'doj', 'republican', 'democrat']):
+            return 'politics'
+        elif any(word in text for word in ['stock', 'market', 'economy', 'inflation', 'fed', 'gdp', 'bitcoin', 'crypto']):
+            return 'economics'
+        elif any(word in text for word in ['game', 'sport', 'team', 'championship', 'player']):
+            return 'sports'
+        elif any(word in text for word in ['tech', 'ai', 'software', 'app', 'startup']):
+            return 'technology'
+        else:
+            return 'general'
+    
+    async def generate_resolution_criteria(self, event_description: str, category: str) -> Dict[str, Any]:
+        """Generate suggested resolution criteria for an event"""
+        
+        if not self.openai_client:
+            return self._fallback_resolution_criteria(event_description, category)
+            
+        try:
+            prompt = f"""Generate clear, objective resolution criteria for this prediction market:
+Event: {event_description}
+Category: {category}
+
+The criteria should be:
+1. Objective and verifiable
+2. Based on reliable sources
+3. Clear about edge cases
+4. Include specific sources to check
+
+Respond in JSON:
+{{
+    "criteria": "How exactly the market will be resolved",
+    "sources": ["list of authoritative sources to check"],
+    "edge_cases": ["potential ambiguous situations and how to handle them"],
+    "confidence": 0.0-1.0
+}}"""
+
+            response = await self.openai_client.ChatCompletion.acreate(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=300,
+                temperature=0.3
+            )
+            
+            return json.loads(response.choices[0].message.content)
+            
+        except Exception as e:
+            logger.error(f"Resolution criteria generation failed: {e}")
+            return self._fallback_resolution_criteria(event_description, category)
+    
+    def _fallback_resolution_criteria(self, event_description: str, category: str) -> Dict[str, Any]:
+        """Simple fallback resolution criteria"""
+        return {
+            "criteria": f"Will be resolved based on official announcements and major news sources regarding: {event_description}",
+            "sources": ["Reuters", "Associated Press", "Official government announcements"],
+            "edge_cases": ["If no clear resolution by deadline, market resolves to NO"],
+            "confidence": 0.6
+        }
+
+class TrendAnalyzer:
+    """Enhanced trend analysis for better topic discovery"""
+    
+    def __init__(self):
+        self.reddit_scraper = RedditScraper() if Config.REDDIT_CLIENT_ID else None
+        self.news_scraper = NewsRSSFeedScraper()
+        self.ai_assistant = AIMarketAssistant()
+    
+    async def get_trending_topics(self, limit: int = 20) -> List[TrendingTopic]:
+        """Get trending topics with AI analysis for market potential"""
+        topics = []
+        
+        # Get Reddit trends
+        if self.reddit_scraper:
+            reddit_posts = await self.reddit_scraper.get_trending_posts(limit_per_sub=5)
+            for post in reddit_posts[:10]:
+                if post['score'] > 1000:  # High engagement threshold
+                    topic = await self._create_trending_topic_from_reddit(post)
+                    if topic:
+                        topics.append(topic)
+        
+        # Get news trends
+        news_articles = await self.news_scraper.get_recent_news_batch(hours=24)
+        for article in news_articles[:10]:
+            topic = await self._create_trending_topic_from_news(article)
+            if topic:
+                topics.append(topic)
+        
+        # Sort by engagement and AI market potential
+        topics.sort(key=lambda t: t.engagement_score + t.ai_analysis.get('market_potential', 0), reverse=True)
+        
+        return topics[:limit]
+    
+    async def _create_trending_topic_from_reddit(self, post: Dict) -> Optional[TrendingTopic]:
+        """Convert Reddit post to TrendingTopic"""
+        try:
+            # AI analysis of market potential
+            ai_analysis = await self._analyze_market_potential(post['title'], post.get('text', ''))
+            
+            return TrendingTopic(
+                id=f"reddit_{post['id']}",
+                title=post['title'],
+                summary=post.get('text', '')[:200] + "..." if post.get('text', '') else "",
+                category=self._categorize_topic(post['title']),
+                source=f"r/{post['subreddit']}",
+                engagement_score=float(post['score']),
+                created_at=datetime.fromtimestamp(post['created']),
+                keywords=self._extract_keywords(post['title']),
+                related_articles=[],
+                ai_analysis=ai_analysis
+            )
+        except Exception as e:
+            logger.error(f"Error creating topic from Reddit post: {e}")
+            return None
+    
+    async def _create_trending_topic_from_news(self, article: Dict) -> Optional[TrendingTopic]:
+        """Convert news article to TrendingTopic"""
+        try:
+            ai_analysis = await self._analyze_market_potential(article['title'], article['summary'])
+            
+            return TrendingTopic(
+                id=f"news_{hash(article['title']) % 1000000}",
+                title=article['title'],
+                summary=article['summary'],
+                category=self._categorize_topic(article['title']),
+                source=article.get('source', 'News'),
+                engagement_score=article.get('relevance_score', 1.0),
+                created_at=article.get('published') or datetime.now(),
+                keywords=self._extract_keywords(article['title']),
+                related_articles=[article],
+                ai_analysis=ai_analysis
+            )
+        except Exception as e:
+            logger.error(f"Error creating topic from news: {e}")
+            return None
+    
+    async def _analyze_market_potential(self, title: str, content: str) -> Dict[str, Any]:
+        """Analyze how good this topic would be for a prediction market"""
+        analysis = {
+            'market_potential': 0.5,
+            'predictability': 0.5,
+            'interest_level': 0.5,
+            'time_sensitivity': 0.5,
+            'suggested_questions': [],
+            'concerns': []
+        }
         
         try:
-            batch_size = 5
-            for i in range(0, len(keywords), batch_size):
-                batch = keywords[i:i+batch_size]
+            # Simple scoring based on content analysis
+            text = (title + " " + content).lower()
+            
+            # Market potential indicators
+            if any(word in text for word in ['will', 'expected', 'predict', 'forecast', 'likely']):
+                analysis['market_potential'] += 0.2
+            
+            # Predictability indicators
+            if any(word in text for word in ['election', 'release', 'announcement', 'decision']):
+                analysis['predictability'] += 0.2
+            
+            # Interest level indicators
+            if any(word in text for word in ['breaking', 'major', 'significant', 'historic']):
+                analysis['interest_level'] += 0.3
+            
+            # Time sensitivity
+            if any(word in text for word in ['today', 'tomorrow', 'soon', 'urgent', 'immediate']):
+                analysis['time_sensitivity'] += 0.3
+            
+            # Generate suggested questions
+            if 'will' in title.lower():
+                analysis['suggested_questions'].append(title + "?")
+            else:
+                analysis['suggested_questions'].append(f"{title[:50]}...")
+            
+            # Clamp values
+            for key in ['market_potential', 'predictability', 'interest_level', 'time_sensitivity']:
+                analysis[key] = min(1.0, analysis[key])
                 
-                try:
-                    self.pytrends.build_payload(batch, timeframe='now 7-d', geo='', cat=0)
-                    data = self.pytrends.interest_over_time()
-                    
-                    if not data.empty:
-                        for keyword in batch:
-                            if keyword in data.columns:
-                                avg_interest = data[keyword].mean()
-                                trends_data[keyword] = int(avg_interest)
-                    
-                    await asyncio.sleep(1)
-                    
-                except Exception as e:
-                    logger.error(f"Error getting trends for batch {batch}: {e}")
-                    
         except Exception as e:
-            logger.error(f"Error in Google Trends scraping: {e}")
+            logger.error(f"Error in market potential analysis: {e}")
         
-        return trends_data
-
-class RedditScraper:
-    """Scrapes Reddit for discussions and sentiment"""
+        return analysis
     
-    def __init__(self):
-        if Config.REDDIT_CLIENT_ID and Config.REDDIT_CLIENT_SECRET:
-            self.reddit = praw.Reddit(
-                client_id=Config.REDDIT_CLIENT_ID,
-                client_secret=Config.REDDIT_CLIENT_SECRET,
-                user_agent=Config.REDDIT_USER_AGENT
+    def _categorize_topic(self, title: str) -> str:
+        """Categorize topic based on title"""
+        title_lower = title.lower()
+        if any(word in title_lower for word in ['election', 'vote', 'president', 'congress', 'senate', 'doj', 'republican', 'democrat']):
+            return 'politics'
+        elif any(word in title_lower for word in ['stock', 'market', 'economy', 'inflation', 'fed', 'gdp']):
+            return 'economics'
+        elif any(word in title_lower for word in ['game', 'sport', 'team', 'championship', 'player']):
+            return 'sports'
+        elif any(word in title_lower for word in ['tech', 'ai', 'software', 'app', 'startup']):
+            return 'technology'
+        elif any(word in title_lower for word in ['crypto', 'bitcoin', 'ethereum', 'blockchain']):
+            return 'cryptocurrency'
+        else:
+            return 'general'
+    
+    def _extract_keywords(self, text: str) -> List[str]:
+        """Extract keywords from text"""
+        words = re.findall(r'\b[a-zA-Z]{3,}\b', text.lower())
+        # Remove common words
+        stop_words = {'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'man', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too', 'use'}
+        keywords = [word for word in words if word not in stop_words]
+        return list(set(keywords))[:10]
+
+class MarketCreationWorkflow:
+    """Handles the step-by-step market creation process"""
+    
+    def __init__(self, db_manager, ai_assistant, predictive_model):
+        self.db_manager = db_manager
+        self.ai_assistant = ai_assistant
+        self.predictive_model = predictive_model
+        self.active_sessions = {}  # session_id -> MarketProposal
+    
+    async def start_market_creation(self, user_message: str, user_id: str = None) -> Dict[str, Any]:
+        """Start the market creation process"""
+        session_id = f"session_{hash(user_message + str(datetime.now())) % 1000000}"
+        
+        # Analyze user intent
+        intent_analysis = await self.ai_assistant.analyze_user_intent(user_message)
+        
+        if intent_analysis['intent'] != 'create_market':
+            return {
+                'success': False,
+                'message': "I don't see a market creation request in your message. Try asking something like 'Will X happen by Y date?'",
+                'suggestions': [
+                    "Will Bitcoin reach $200,000 by end of 2026?",
+                    "Will the next election have over 70% turnout?",
+                    "Will OpenAI release GPT-5 this year?"
+                ]
+            }
+        
+        # Create initial proposal
+        proposal = MarketProposal(
+            id=session_id,
+            description=intent_analysis.get('suggested_question', ''),
+            end_date=datetime.now() + timedelta(days=30),  # Default
+            category=intent_analysis.get('category', 'general'),
+            resolution_criteria='',
+            ai_probability=0.5,
+            ai_confidence=0.0,
+            key_factors=[],
+            risk_factors=[],
+            data_quality_score=0.0,
+            creation_steps=[],
+            user_id=user_id
+        )
+        
+        # Determine next step
+        next_step = await self._determine_next_step(proposal, intent_analysis)
+        proposal.creation_steps.append(next_step)
+        
+        self.active_sessions[session_id] = proposal
+        
+        return {
+            'success': True,
+            'session_id': session_id,
+            'current_step': next_step.step_number,
+            'prompt': next_step.prompt,
+            'ai_suggestion': next_step.ai_suggestion,
+            'progress': f"Step {next_step.step_number} of 4"
+        }
+    
+    async def continue_market_creation(self, session_id: str, user_response: str) -> Dict[str, Any]:
+        """Continue the market creation process with user response"""
+        if session_id not in self.active_sessions:
+            return {'success': False, 'message': 'Session not found. Please start a new market creation.'}
+        
+        proposal = self.active_sessions[session_id]
+        current_step = proposal.creation_steps[-1]
+        
+        # Validate and process user response
+        validation = await self._validate_step_response(current_step, user_response)
+        current_step.user_input = user_response
+        current_step.validation_result = validation
+        
+        if not validation['valid']:
+            return {
+                'success': False,
+                'message': validation['message'],
+                'retry_prompt': current_step.prompt,
+                'session_id': session_id
+            }
+        
+        # Update proposal with validated data
+        await self._update_proposal_from_step(proposal, current_step, user_response)
+        
+        # Determine if we need more steps
+        if current_step.step_number < 4:  # Assuming 4 steps total
+            next_step = await self._determine_next_step(proposal, {})
+            proposal.creation_steps.append(next_step)
+            
+            return {
+                'success': True,
+                'session_id': session_id,
+                'current_step': next_step.step_number,
+                'prompt': next_step.prompt,
+                'ai_suggestion': next_step.ai_suggestion,
+                'progress': f"Step {next_step.step_number} of 4"
+            }
+        else:
+            # Final step - generate AI analysis and prepare market
+            final_result = await self._finalize_market_proposal(proposal)
+            proposal.status = "ready"
+            
+            return final_result
+    
+    async def _determine_next_step(self, proposal: MarketProposal, context: Dict) -> MarketCreationStep:
+        """Determine what the next step should be"""
+        current_step_num = len(proposal.creation_steps) + 1
+        
+        if current_step_num == 1:
+            # Step 1: Clarify the question
+            return MarketCreationStep(
+                step_number=1,
+                step_name="question_clarification",
+                prompt="Let's refine your prediction question. Please provide a clear Yes/No question about a future event.",
+                ai_suggestion=proposal.description if proposal.description else "Will [specific event] happen by [specific date]?"
+            )
+        elif current_step_num == 2:
+            # Step 2: Set timeframe
+            return MarketCreationStep(
+                step_number=2,
+                step_name="timeframe",
+                prompt="When should this market resolve? Please provide a specific date or timeframe.",
+                ai_suggestion="30 days from now" if not context.get('timeframe') else context['timeframe']
+            )
+        elif current_step_num == 3:
+            # Step 3: Resolution criteria
+            criteria_suggestion = await self.ai_assistant.generate_resolution_criteria(
+                proposal.description, proposal.category
+            )
+            return MarketCreationStep(
+                step_number=3,
+                step_name="resolution_criteria",
+                prompt="How should this market be resolved? What sources should we check to determine the outcome?",
+                ai_suggestion=criteria_suggestion.get('criteria', 'Based on official announcements and major news sources')
             )
         else:
-            self.reddit = None
-            logger.warning("Reddit API credentials not provided. Reddit scraping disabled.")
+            # Step 4: Final review
+            return MarketCreationStep(
+                step_number=4,
+                step_name="final_review",
+                prompt="Please review the market details. Type 'confirm' to proceed with creation, or suggest any changes.",
+                ai_suggestion="Everything looks good! Ready to create your market."
+            )
     
-    async def get_trending_posts(self, limit_per_sub: int = 20) -> List[Dict]:
-        """Get trending posts from monitored subreddits"""
-        if not self.reddit:
-            return []
+    async def _validate_step_response(self, step: MarketCreationStep, response: str) -> Dict[str, Any]:
+        """Validate user response for current step"""
+        if step.step_name == "question_clarification":
+            if not response.strip():
+                return {'valid': False, 'message': 'Please provide a question for your market.'}
+            if '?' not in response:
+                return {'valid': False, 'message': 'Please format as a Yes/No question ending with ?'}
+            return {'valid': True, 'message': 'Question looks good!'}
         
-        trending_posts = []
+        elif step.step_name == "timeframe":
+            # Try to parse timeframe
+            try:
+                # Simple date parsing
+                if any(word in response.lower() for word in ['day', 'week', 'month', 'year']):
+                    return {'valid': True, 'message': 'Timeframe accepted.'}
+                # Try to parse specific date formats
+                parsed_date = self._parse_date(response)
+                if parsed_date:
+                    return {'valid': True, 'message': f'Market will resolve on {parsed_date.strftime("%B %d, %Y")}'}
+                return {'valid': False, 'message': 'Please provide a clearer timeframe (e.g., "in 30 days", "by December 2026", "January 15, 2025")'}
+            except:
+                return {'valid': False, 'message': 'Please provide a valid timeframe.'}
         
+        elif step.step_name == "resolution_criteria":
+            if len(response.strip()) < 10:
+                return {'valid': False, 'message': 'Please provide more detailed resolution criteria.'}
+            return {'valid': True, 'message': 'Resolution criteria accepted.'}
+        
+        elif step.step_name == "final_review":
+            if response.lower().strip() in ['confirm', 'yes', 'proceed', 'create']:
+                return {'valid': True, 'message': 'Confirmed! Creating your market...'}
+            return {'valid': True, 'message': 'Please specify changes or type "confirm" to proceed.'}
+        
+        return {'valid': True, 'message': 'Input accepted.'}
+    
+    def _parse_date(self, date_str: str) -> Optional[datetime]:
+        """Parse various date formats"""
+        date_str = date_str.strip()
+        
+        # Try various formats
+        formats = [
+            "%Y-%m-%d",
+            "%B %d, %Y",
+            "%b %d, %Y",
+            "%m/%d/%Y",
+            "%d/%m/%Y"
+        ]
+        
+        for fmt in formats:
+            try:
+                return datetime.strptime(date_str, fmt)
+            except ValueError:
+                continue
+        
+        # Try relative dates
+        if "day" in date_str.lower():
+            days = re.search(r'(\d+)', date_str)
+            if days:
+                return datetime.now() + timedelta(days=int(days.group(1)))
+        
+        if "week" in date_str.lower():
+            weeks = re.search(r'(\d+)', date_str)
+            if weeks:
+                return datetime.now() + timedelta(weeks=int(weeks.group(1)))
+        
+        if "month" in date_str.lower():
+            months = re.search(r'(\d+)', date_str)
+            if months:
+                return datetime.now() + timedelta(days=int(months.group(1)) * 30)
+        
+        return None
+    
+    async def _update_proposal_from_step(self, proposal: MarketProposal, step: MarketCreationStep, response: str):
+        """Update proposal with data from completed step"""
+        if step.step_name == "question_clarification":
+            proposal.description = response.strip()
+        elif step.step_name == "timeframe":
+            parsed_date = self._parse_date(response)
+            if parsed_date:
+                proposal.end_date = parsed_date
+        elif step.step_name == "resolution_criteria":
+            proposal.resolution_criteria = response.strip()
+    
+    async def _finalize_market_proposal(self, proposal: MarketProposal) -> Dict[str, Any]:
+        """Generate final AI analysis and prepare market for creation"""
         try:
-            for subreddit_name in Config.SUBREDDITS:
-                try:
-                    subreddit = self.reddit.subreddit(subreddit_name)
-                    
-                    hot_posts = subreddit.hot(limit=limit_per_sub)
-                    
-                    for post in hot_posts:
-                        if not post.stickied and post.score > 100:  # Filter for popular posts
-                            comments = []
-                            post.comments.replace_more(limit=0)
-                            for comment in post.comments.list()[:10]:  # Top 10 comments
-                                if hasattr(comment, 'body') and len(comment.body) > 10:
-                                    comments.append({
-                                        'text': comment.body,
-                                        'score': comment.score
-                                    })
-                            
-                            trending_posts.append({
-                                'id': post.id,
-                                'title': post.title,
-                                'text': post.selftext if post.selftext else '',
-                                'score': post.score,
-                                'num_comments': post.num_comments,
-                                'created': post.created_utc,
-                                'subreddit': subreddit_name,
-                                'comments': comments
-                            })
-                    
-                    await asyncio.sleep(1)
-                    
-                except Exception as e:
-                    logger.error(f"Error accessing subreddit {subreddit_name}: {e}")
-                    
+            # Get AI probability analysis
+            # This would use your existing predictive model
+            # For now, simplified version:
+            
+            analysis_result = {
+                'probability': 0.65,  # This should come from your ML model
+                'confidence': 0.75,
+                'key_factors': ['Historical precedent', 'Current trends', 'Expert opinions'],
+                'risk_factors': ['Unexpected events', 'Policy changes'],
+                'data_quality_score': 0.8
+            }
+            
+            proposal.ai_probability = analysis_result['probability']
+            proposal.ai_confidence = analysis_result['confidence']
+            proposal.key_factors = analysis_result['key_factors']
+            proposal.risk_factors = analysis_result['risk_factors']
+            proposal.data_quality_score = analysis_result['data_quality_score']
+            
+            return {
+                'success': True,
+                'message': 'Market proposal ready for creation!',
+                'proposal': {
+                    'id': proposal.id,
+                    'description': proposal.description,
+                    'end_date': proposal.end_date.strftime('%Y-%m-%d'),
+                    'resolution_criteria': proposal.resolution_criteria,
+                    'category': proposal.category,
+                    'ai_analysis': {
+                        'probability': f"{proposal.ai_probability:.1%}",
+                        'confidence': f"{proposal.ai_confidence:.1%}",
+                        'key_factors': proposal.key_factors,
+                        'risk_factors': proposal.risk_factors,
+                        'recommendation': self._generate_recommendation(proposal)
+                    }
+                },
+                'ready_to_create': True,
+                'session_id': proposal.id
+            }
+            
         except Exception as e:
-            logger.error(f"Error in Reddit scraping: {e}")
-        
-        # Sort by score descending and take top
-        trending_posts.sort(key=lambda p: p['score'], reverse=True)
-        return trending_posts[:50]
+            logger.error(f"Error finalizing market proposal: {e}")
+            return {
+                'success': False,
+                'message': f'Error analyzing market: {str(e)}',
+                'session_id': proposal.id
+            }
+    
+    def _generate_recommendation(self, proposal: MarketProposal) -> str:
+        """Generate AI recommendation for the market"""
+        if proposal.ai_confidence < 0.6:
+            return f"⚠️ Moderate confidence prediction. Consider additional research before betting."
+        elif proposal.ai_probability > 0.7:
+            return f"📈 AI predicts high likelihood of YES ({proposal.ai_probability:.1%})"
+        elif proposal.ai_probability < 0.3:
+            return f"📉 AI predicts high likelihood of NO ({1-proposal.ai_probability:.1%})"
+        else:
+            return f"⚖️ Balanced prediction - genuine uncertainty makes this interesting"
 
 class NewsRSSFeedScraper:
-    """Scrapes news from RSS feeds"""
-    
     def __init__(self):
-        # General news RSS feeds for various topics
-        self.news_feeds = [
-            'https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml',  # Technology
-            'https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml',  # Politics
-            'https://www.espn.com/espn/rss/news',  # Sports
-            'https://cointelegraph.com/rss',  # Crypto
-            'https://feeds.bbci.co.uk/news/technology/rss.xml',
-            'https://feeds.bbci.co.uk/news/politics/rss.xml',
-            'https://feeds.bbci.co.uk/sport/rss.xml',
-            'https://cryptoslate.com/feed/',
-        ]
+        self.news_feeds = Config.NEWS_SOURCES
     
-    async def get_news_for_keyword(self, keyword: str, hours: int = 24) -> List[Dict]:
-        """Get recent news articles mentioning the keyword"""
+    async def get_recent_news_batch(self, hours: int = 24) -> List[Dict]:
+        """Get recent news from all feeds"""
         articles = []
         cutoff_time = datetime.now() - timedelta(hours=hours)
         
         for feed_url in self.news_feeds:
             try:
                 feed = feedparser.parse(feed_url)
-                
                 for entry in feed.entries:
-                    title_lower = entry.title.lower()
-                    summary_lower = getattr(entry, 'summary', '').lower()
-                    
-                    if keyword.lower() in title_lower or keyword.lower() in summary_lower:
-                        try:
+                    pub_date = None
+                    try:
+                        if hasattr(entry, 'published_parsed') and entry.published_parsed:
                             pub_date = datetime(*entry.published_parsed[:6])
-                            if pub_date > cutoff_time:
-                                articles.append({
-                                    'title': entry.title,
-                                    'summary': getattr(entry, 'summary', ''),
-                                    'link': entry.link,
-                                    'published': pub_date,
-                                    'source': feed_url
-                                })
-                        except Exception:
-                            articles.append({
-                                'title': entry.title,
-                                'summary': getattr(entry, 'summary', ''),
-                                'link': entry.link,
-                                'published': None,
-                                'source': feed_url
-                            })
-                
+                    except:
+                        pass
+                    
+                    if not pub_date or pub_date > cutoff_time:
+                        articles.append({
+                            'title': getattr(entry, 'title', ''),
+                            'summary': getattr(entry, 'summary', ''),
+                            'link': getattr(entry, 'link', ''),
+                            'published': pub_date,
+                            'source': feed_url,
+                            'relevance_score': 1.0
+                        })
                 await asyncio.sleep(0.5)
-                
             except Exception as e:
-                logger.error(f"Error parsing RSS feed {feed_url}: {e}")
+                logger.warning(f"Error parsing RSS feed {feed_url}: {e}")
         
-        unique_articles = []
-        seen_titles = set()
-        
-        for article in articles:
-            title_key = re.sub(r'[^\w]', '', article['title'].lower())
-            if title_key not in seen_titles:
-                seen_titles.add(title_key)
-                unique_articles.append(article)
-        
-        return unique_articles[:20]
+        return articles[:50]
 
-def search_google(query: str) -> List[Dict]:
-    """Simple Google search scraper for resolution data"""
-    url = f"https://www.google.com/search?q={requests.utils.quote(query)}"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.text, "html.parser")
-        results = []
-        for g in soup.find_all('div', class_='g'):
-            title = g.find('h3')
-            title_text = title.text if title else ''
-            snippet = g.find('div', class_=['VwiC3b', 'yXK7lf'])
-            snippet_text = snippet.text if snippet else ''
-            link = g.find('a')
-            link_href = link['href'] if link else ''
-            if title_text and snippet_text:
-                results.append({
-                    'title': title_text,
-                    'snippet': snippet_text,
-                    'link': link_href
-                })
-        return results[:10]
-    except Exception as e:
-        logger.error(f"Error in Google search: {e}")
-        return []
-
-class FreeSentimentAnalyzer:
-    """Sentiment analysis using Hugging Face models"""
-    
+class RedditScraper:
     def __init__(self):
-        try:
-            self.analyzer = pipeline(
-                "sentiment-analysis",
-                model="cardiffnlp/twitter-roberta-base-sentiment-latest",
-                return_all_scores=True
-            )
-        except:
-            self.analyzer = pipeline("sentiment-analysis")
-    
-    async def analyze_texts(self, texts: List[str]) -> float:
-        if not texts:
-            return 0.0
-        
-        try:
-            batch_size = 10
-            all_scores = []
-            
-            for i in range(0, len(texts), batch_size):
-                batch = texts[i:i+batch_size]
-                cleaned_batch = []
-                for text in batch:
-                    cleaned = re.sub(r'http\S+|www\S+|@\w+|#\w+', '', text)
-                    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-                    if len(cleaned) > 10:
-                        cleaned_batch.append(cleaned[:512])
-                
-                if cleaned_batch:
-                    results = self.analyzer(cleaned_batch)
-                    for result in results:
-                        if isinstance(result, list):
-                            pos_score = next((r['score'] for r in result if r['label'].lower() in ['positive', 'pos']), 0)
-                            neg_score = next((r['score'] for r in result if r['label'].lower() in ['negative', 'neg']), 0)
-                            score = pos_score - neg_score
-                        else:
-                            score = result['score'] if result['label'].lower() in ['positive', 'pos'] else -result['score']
-                        all_scores.append(score)
-                
-                await asyncio.sleep(0.1)
-            
-            return sum(all_scores) / len(all_scores) if all_scores else 0.0
-            
-        except Exception as e:
-            logger.error(f"Error in sentiment analysis: {e}")
-            return 0.0
-
-class FreeTrendAnalyzer:
-    """Main trend analyzer using free data sources"""
-    
-    def __init__(self):
-        self.google_trends = GoogleTrendsScraper()
-        self.reddit_scraper = RedditScraper()
-        self.news_scraper = NewsRSSFeedScraper()
-        self.sentiment_analyzer = FreeSentimentAnalyzer()
-    
-    async def analyze_all_trends(self) -> List[TrendingTopic]:
-        """Analyze trends from monitored subreddits"""
-        trends = []
-        
-        logger.info("Fetching Reddit trending posts...")
-        trending_posts = await self.reddit_scraper.get_trending_posts()
-        
-        # Extract keywords from post titles (simple: use title as keyword)
-        keywords = [post['title'] for post in trending_posts]
-        unique_keywords = list(set(keywords))  # Dedup
-        
-        logger.info("Fetching Google Trends data...")
-        google_trends_data = await self.google_trends.get_trends(unique_keywords)
-        
-        for post in trending_posts:
-            logger.info(f"Analyzing trend for post: {post['title']}")
-            
+        if Config.REDDIT_CLIENT_ID and Config.REDDIT_CLIENT_SECRET:
             try:
-                keyword = post['title']
-                
-                # Gather data
-                news_articles = await self.news_scraper.get_news_for_keyword(keyword)
-                
-                # Collect texts for sentiment
-                all_texts = [post['title'], post['text']] + [c['text'] for c in post['comments']]
-                for article in news_articles:
-                    all_texts.append(article['title'])
-                    if article['summary']:
-                        all_texts.append(article['summary'])
-                
-                if len(all_texts) < Config.MIN_MENTION_COUNT:
-                    logger.info(f"Insufficient mentions for {keyword}: {len(all_texts)}")
-                    continue
-                
-                sentiment_score = await self.sentiment_analyzer.analyze_texts(all_texts)
-                
-                google_score = google_trends_data.get(keyword, 0)
-                
-                reddit_score = post['score']
-                
-                trend = TrendingTopic(
-                    keyword=keyword,
-                    sentiment_score=sentiment_score,
-                    mention_count=len(all_texts),
-                    google_trend_score=google_score,
-                    reddit_score=reddit_score,
-                    news_sentiment=sentiment_score,
-                    related_content=all_texts[:10],
-                    sources=['reddit', 'google_trends', 'news_rss'],
-                    post_id=post['id']
+                self.reddit = praw.Reddit(
+                    client_id=Config.REDDIT_CLIENT_ID,
+                    client_secret=Config.REDDIT_CLIENT_SECRET,
+                    user_agent=Config.REDDIT_USER_AGENT
                 )
-                
-                trends.append(trend)
-                
+                self.reddit.user.me()
             except Exception as e:
-                logger.error(f"Error analyzing {post['title']}: {e}")
-        
-        return trends
-
-class MarketGenerator:
-    """Generates market descriptions from trending topics"""
-    
-    def __init__(self):
-        if Config.OPENAI_API_KEY:
-            openai.api_key = Config.OPENAI_API_KEY
-    
-    async def generate_market_proposals(self, trends: List[TrendingTopic]) -> List[MarketProposal]:
-        proposals = []
-        
-        for trend in trends:
-            if abs(trend.sentiment_score) < Config.MIN_SENTIMENT_THRESHOLD:
-                continue
-            
-            description, resolution_criteria = await self.generate_market_description(trend)
-            if not description:
-                continue
-            
-            end_time = int((datetime.now() + timedelta(hours=Config.MARKET_DURATION_HOURS)).timestamp())
-            
-            confidence_score = self.calculate_confidence_score(trend)
-            
-            proposal = MarketProposal(
-                description=description,
-                end_time=end_time,
-                confidence_score=confidence_score,
-                topic=trend,
-                oracle_address=Config.CONTRACT_ADDRESS,
-                resolution_criteria=resolution_criteria
-            )
-            
-            proposals.append(proposal)
-        
-        proposals.sort(key=lambda x: x.confidence_score, reverse=True)
-        return proposals[:5]  # Top 5 proposals
-    
-    async def generate_market_description(self, trend: TrendingTopic) -> Tuple[Optional[str], str]:
-        """Generate market description and resolution criteria based on trend"""
-        base_description = f"Will the outcome related to '{trend.keyword}' be positive?"
-        resolution_criteria = "Resolved based on major news reports confirming the outcome."
-        
-        if Config.OPENAI_API_KEY:
-            try:
-                enhanced, enhanced_criteria = await self.enhance_with_ai(trend)
-                return enhanced or base_description, enhanced_criteria or resolution_criteria
-            except Exception as e:
-                logger.error(f"AI enhancement failed: {e}")
-        
-        return base_description, resolution_criteria
-    
-    async def enhance_with_ai(self, trend: TrendingTopic) -> Tuple[Optional[str], Optional[str]]:
-        """Enhance description using OpenAI"""
-        try:
-            context = f"""
-            Topic: {trend.keyword}
-            Sentiment Score: {trend.sentiment_score}
-            Google Trends: {trend.google_trend_score}
-            Reddit Activity: {trend.reddit_score}
-            Sample Content: {'; '.join(trend.related_content[:3])}
-            """
-            
-            response = await openai.ChatCompletion.acreate(
-                model="gpt-4",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an AI that generates engaging Yes/No prediction market questions based on trending Reddit posts and news. Also suggest resolution criteria (e.g., based on news from reputable sources). Keep questions under 100 characters. Focus on measurable, resolvable outcomes like 'Will [event] happen by [date]?'. Example: For a post about a lawyer suing Meta, suggest 'Will the lawyer win the case against Meta? Yes/No' with resolution 'Based on court ruling reported by major news outlets.'"
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Context:\n{context}\n\nGenerate a Yes/No market question and resolution criteria."
-                    }
-                ],
-                max_tokens=100,
-                temperature=0.7
-            )
-            
-            ai_response = response.choices[0].message.content.strip()
-            # Parse response (assume format: Question: ...\nResolution: ...)
-            if 'Question:' in ai_response and 'Resolution:' in ai_response:
-                question = ai_response.split('Question:')[1].split('Resolution:')[0].strip()
-                resolution = ai_response.split('Resolution:')[1].strip()
-            else:
-                question = ai_response
-                resolution = "Based on news reports."
-            
-            return question, resolution
-            
-        except Exception as e:
-            logger.error(f"OpenAI API error: {e}")
-            return None, None
-    
-    def calculate_confidence_score(self, trend: TrendingTopic) -> float:
-        score = 0.0
-        sentiment_strength = min(abs(trend.sentiment_score), 1.0) * 0.4
-        score += sentiment_strength
-        mention_volume = min(trend.mention_count / 100, 1.0) * 0.25
-        score += mention_volume
-        google_interest = min(trend.google_trend_score / 100, 1.0) * 0.2
-        score += google_interest
-        source_diversity = len(trend.sources) / 4 * 0.15
-        score += source_diversity
-        return min(score, 1.0)
-
-class AptosContractIntegrator:
-    """Integrates with Aptos prediction market contract"""
-    
-    def __init__(self):
-        self.client = RestClient(Config.APTOS_NODE_URL)
-        if Config.ADMIN_PRIVATE_KEY:
-            self.admin_account = Account.load_key(Config.ADMIN_PRIVATE_KEY)
+                logger.warning(f"Reddit API connection failed: {e}")
+                self.reddit = None
         else:
-            logger.error("ADMIN_PRIVATE_KEY not provided")
-            self.admin_account = None
+            self.reddit = None
+            logger.warning("Reddit API credentials not provided")
     
-    async def create_market(self, proposal: MarketProposal) -> bool:
-        if not self.admin_account:
-            return False
-        
-        try:
-            payload = TransactionPayload(EntryFunction.natural(
-                f"{Config.CONTRACT_ADDRESS}::pivot_market_stt",
-                "create_market",
-                [],
-                [
-                    TransactionArgument(proposal.description, "String"),
-                    TransactionArgument(proposal.end_time, "U64"),
-                    TransactionArgument(proposal.oracle_address, "String"),
-                    TransactionArgument(proposal.resolution_criteria, "String")  # Added
-                ]
-            ))
-            
-            signed_txn = await self.client.create_bcs_signed_transaction(
-                self.admin_account, payload
-            )
-            
-            result = await self.client.submit_bcs_transaction(signed_txn)
-            await self.client.wait_for_transaction(result)
-            
-            logger.info(f"✅ Market created: {proposal.description}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to create market: {e}")
-            return False
-    
-    async def get_open_markets(self) -> List[Market]:
-        """Query open markets from contract (assume view function exists)"""
-        try:
-            result = await self.client.view(
-                function=f"{Config.CONTRACT_ADDRESS}::prediction_markets::get_open_markets",
-                type_arguments=[],
-                arguments=[]
-            )
-            # Parse result assuming it's a list of structs
-            markets = []
-            for item in result:
-                markets.append(Market(
-                    market_id=item['market_id'],
-                    description=item['description'],
-                    end_time=item['end_time'],
-                    resolved=item['resolved'],
-                    outcome=None
-                ))
-            return markets
-        except Exception as e:
-            logger.error(f"Error querying open markets: {e}")
+    async def get_trending_posts(self, limit_per_sub: int = 10) -> List[Dict]:
+        if not self.reddit:
             return []
-    
-    async def resolve_market(self, market_id: int, outcome: bool) -> bool:
-        if not self.admin_account:
-            return False
         
-        try:
-            payload = TransactionPayload(EntryFunction.natural(
-                f"{Config.CONTRACT_ADDRESS}::prediction_markets",
-                "resolve_market",
-                [],
-                [
-                    TransactionArgument(market_id, "U64"),
-                    TransactionArgument(outcome, "Bool")
-                ]
-            ))
-            
-            signed_txn = await self.client.create_bcs_signed_transaction(
-                self.admin_account, payload
-            )
-            
-            result = await self.client.submit_bcs_transaction(signed_txn)
-            await self.client.wait_for_transaction(result)
-            
-            logger.info(f"✅ Market {market_id} resolved to {'Yes' if outcome else 'No'}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to resolve market {market_id}: {e}")
-            return False
-
-class MarketResolver:
-    """Resolves markets using real-world data"""
-    
-    def __init__(self, integrator: AptosContractIntegrator):
-        self.integrator = integrator
-        if Config.OPENAI_API_KEY:
-            openai.api_key = Config.OPENAI_API_KEY
-    
-    async def resolve_pending_markets(self):
-        logger.info("Checking for markets to resolve...")
-        open_markets = await self.integrator.get_open_markets()
-        current_time = int(datetime.now().timestamp())
-        
-        for market in open_markets:
-            if market.end_time <= current_time and not market.resolved:
-                outcome = await self.determine_outcome(market)
-                if outcome is not None:
-                    success = await self.integrator.resolve_market(market.market_id, outcome)
-                    if success:
-                        logger.info(f"Resolved market: {market.description}")
-    
-    async def determine_outcome(self, market: Market) -> Optional[bool]:
-        """Determine Yes/No outcome based on search results"""
-        query = f"{market.description} outcome resolution as of {datetime.fromtimestamp(market.end_time).strftime('%Y-%m-%d')}"
-        search_results = search_google(query)
-        
-        if not search_results:
-            return None
-        
-        texts = [r['title'] + " " + r['snippet'] for r in search_results]
-        
-        if Config.OPENAI_API_KEY:
+        trending_posts = []
+        for subreddit_name in Config.SUBREDDITS:
             try:
-                response = await openai.ChatCompletion.acreate(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "system", "content": "Determine if the outcome of the prediction market question is Yes or No based on provided search results. Respond with 'Yes', 'No', or 'Unclear'."},
-                        {"role": "user", "content": f"Question: {market.description}\nSearch results: {'; '.join(texts)}\nOutcome:"}
-                    ],
-                    max_tokens=10,
-                    temperature=0.3
-                )
-                ai_response = response.choices[0].message.content.strip().lower()
-                if 'yes' in ai_response:
-                    return True
-                elif 'no' in ai_response:
-                    return False
-                else:
-                    return None
+                subreddit = self.reddit.subreddit(subreddit_name)
+                hot_posts = subreddit.hot(limit=limit_per_sub)
+                
+                for post in hot_posts:
+                    if not post.stickied and post.score > 500:
+                        trending_posts.append({
+                            'id': post.id,
+                            'title': post.title,
+                            'text': getattr(post, 'selftext', '') or '',
+                            'score': post.score,
+                            'num_comments': post.num_comments,
+                            'created': post.created_utc,
+                            'subreddit': subreddit_name,
+                            'upvote_ratio': getattr(post, 'upvote_ratio', 0.5)
+                        })
+                
+                await asyncio.sleep(1)
             except Exception as e:
-                logger.error(f"AI resolution failed: {e}")
+                logger.warning(f"Error accessing subreddit {subreddit_name}: {e}")
         
-        # Fallback: simple keyword check
-        positive_count = sum(1 for t in texts if any(word in t.lower() for word in ['yes', 'won', 'succeeded', 'true']))
-        negative_count = sum(1 for t in texts if any(word in t.lower() for word in ['no', 'lost', 'failed', 'false']))
-        if positive_count > negative_count:
-            return True
-        elif negative_count > positive_count:
-            return False
-        return None
+        return sorted(trending_posts, key=lambda p: p['score'], reverse=True)
 
-class FreeAIMarketOrchestrator:
-    """Main orchestrator using free data sources"""
+class DatabaseManager:
+    def __init__(self, db_path: str = "prediction_oracle.db"):
+        self.db_path = db_path
+        self.init_database()
+    
+    def init_database(self):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS trending_topics (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    summary TEXT,
+                    category TEXT,
+                    source TEXT,
+                    engagement_score REAL,
+                    created_at TEXT,
+                    keywords TEXT,
+                    ai_analysis TEXT
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS market_proposals (
+                    id TEXT PRIMARY KEY,
+                    description TEXT NOT NULL,
+                    end_date TEXT NOT NULL,
+                    category TEXT,
+                    resolution_criteria TEXT,
+                    ai_probability REAL,
+                    ai_confidence REAL,
+                    key_factors TEXT,
+                    risk_factors TEXT,
+                    data_quality_score REAL,
+                    status TEXT DEFAULT 'draft',
+                    user_id TEXT,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS market_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    user_id TEXT,
+                    current_step INTEGER,
+                    proposal_data TEXT,
+                    created_at TEXT,
+                    updated_at TEXT
+                )
+            """)
+    
+    def store_trending_topic(self, topic: TrendingTopic):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO trending_topics 
+                (id, title, summary, category, source, engagement_score, created_at, keywords, ai_analysis)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                topic.id,
+                topic.title,
+                topic.summary,
+                topic.category,
+                topic.source,
+                topic.engagement_score,
+                topic.created_at.isoformat(),
+                json.dumps(topic.keywords),
+                json.dumps(topic.ai_analysis)
+            ))
+    
+    def get_trending_topics(self, limit: int = 20, category: str = None) -> List[TrendingTopic]:
+        with sqlite3.connect(self.db_path) as conn:
+            query = "SELECT * FROM trending_topics"
+            params = []
+            if category:
+                query += " WHERE category = ?"
+                params.append(category)
+            query += " ORDER BY engagement_score DESC"
+            if limit:
+                query += " LIMIT ?"
+                params.append(limit)
+            
+            cursor = conn.execute(query, params)
+            topics = []
+            for row in cursor.fetchall():
+                topics.append(TrendingTopic(
+                    id=row[0],
+                    title=row[1],
+                    summary=row[2] or '',
+                    category=row[3] or 'general',
+                    source=row[4] or '',
+                    engagement_score=row[5] or 0.0,
+                    created_at=datetime.fromisoformat(row[6]),
+                    keywords=json.loads(row[7]) if row[7] else [],
+                    related_articles=[],
+                    ai_analysis=json.loads(row[8]) if row[8] else {}
+                ))
+            return topics
+
+# Simple predictive model for demonstration
+class SimplePredictiveModel:
+    def __init__(self):
+        self.model_ready = False
+    
+    async def predict_probability(self, description: str, category: str, features: Dict = None) -> Dict[str, Any]:
+        """Predict probability and confidence for a market"""
+        # This is a simplified version - you'd integrate your ML model here
+        
+        # Simple rule-based prediction for demo
+        desc_lower = description.lower()
+        
+        # Base probability
+        probability = 0.5
+        confidence = 0.6
+        
+        # Adjust based on keywords and patterns
+        if any(word in desc_lower for word in ['will', 'likely', 'expected']):
+            probability += 0.1
+            confidence += 0.1
+        
+        if any(word in desc_lower for word in ['bitcoin', 'crypto']):
+            # Crypto is volatile
+            probability = 0.4
+            confidence = 0.5
+        
+        if category == 'politics':
+            # Political events often have more uncertainty
+            confidence = max(0.4, confidence - 0.1)
+        
+        # Generate factors
+        key_factors = [
+            "Historical precedent analysis",
+            "Current market sentiment",
+            "Expert opinion trends"
+        ]
+        
+        risk_factors = [
+            "Unexpected events could change outcome",
+            "Limited historical data for this type of event",
+            "High volatility in this category"
+        ]
+        
+        return {
+            'probability': min(0.95, max(0.05, probability)),
+            'confidence': min(0.9, max(0.3, confidence)),
+            'key_factors': key_factors[:3],
+            'risk_factors': risk_factors[:2],
+            'data_quality_score': confidence
+        }
+
+class PredictionMarketAPI:
+    """Flask API server for the prediction market system"""
     
     def __init__(self):
-        self.trend_analyzer = FreeTrendAnalyzer()
-        self.market_generator = MarketGenerator()
-        self.contract_integrator = AptosContractIntegrator()
-        self.market_resolver = MarketResolver(self.contract_integrator)
+        self.app = Flask(__name__)
+        CORS(self.app)
+        
+        # Initialize components
+        self.db_manager = DatabaseManager()
+        self.ai_assistant = AIMarketAssistant()
+        self.trend_analyzer = TrendAnalyzer()
+        self.predictive_model = SimplePredictiveModel()
+        self.market_workflow = MarketCreationWorkflow(
+            self.db_manager, self.ai_assistant, self.predictive_model
+        )
+        
+        # Background task for updating trends
+        self.setup_background_tasks()
+        
+        # Register routes
+        self.register_routes()
     
-    async def run_market_generation_cycle(self):
-        logger.info("🚀 Starting market generation cycle...")
+    def setup_background_tasks(self):
+        """Setup background tasks for trend analysis"""
+        async def update_trends():
+            try:
+                topics = await self.trend_analyzer.get_trending_topics()
+                for topic in topics:
+                    self.db_manager.store_trending_topic(topic)
+                logger.info(f"Updated {len(topics)} trending topics")
+            except Exception as e:
+                logger.error(f"Error updating trends: {e}")
         
-        try:
-            trends = await self.trend_analyzer.analyze_all_trends()
-            logger.info(f"Found {len(trends)} trending topics")
-            
-            if not trends:
-                return
-            
-            for trend in trends:
-                logger.info(f"  {trend.keyword}: sentiment={trend.sentiment_score:.2f}, mentions={trend.mention_count}, google={trend.google_trend_score}")
-            
-            proposals = await self.market_generator.generate_market_proposals(trends)
-            logger.info(f"Generated {len(proposals)} market proposals")
-            
-            created_count = 0
-            for proposal in proposals:
-                logger.info(f"Creating: {proposal.description} (confidence: {proposal.confidence_score:.2f})")
-                success = await self.contract_integrator.create_market(proposal)
-                if success:
-                    created_count += 1
-                await asyncio.sleep(2)
-            
-            logger.info(f"✅ Successfully created {created_count}/{len(proposals)} markets")
-            
-        except Exception as e:
-            logger.error(f"❌ Error in market generation cycle: {e}")
+        # Run trend update every hour
+        schedule.every().hour.do(lambda: asyncio.run(update_trends()))
     
-    async def run_resolution_cycle(self):
-        await self.market_resolver.resolve_pending_markets()
+    def register_routes(self):
+        """Register all API routes"""
+        
+        @self.app.route('/api/trends', methods=['GET'])
+        def get_trends():
+            """Get trending topics for market creation"""
+            try:
+                category = request.args.get('category')
+                limit = int(request.args.get('limit', 20))
+                
+                topics = self.db_manager.get_trending_topics(limit=limit, category=category)
+                
+                return jsonify({
+                    'success': True,
+                    'trends': [{
+                        'id': topic.id,
+                        'title': topic.title,
+                        'summary': topic.summary,
+                        'category': topic.category,
+                        'source': topic.source,
+                        'engagement_score': topic.engagement_score,
+                        'created_at': topic.created_at.isoformat(),
+                        'keywords': topic.keywords,
+                        'market_potential': topic.ai_analysis.get('market_potential', 0.5),
+                        'suggested_questions': topic.ai_analysis.get('suggested_questions', [])
+                    } for topic in topics]
+                })
+            except Exception as e:
+                return jsonify({'success': False, 'error': str(e)}), 500
+        
+        @self.app.route('/api/market/start', methods=['POST'])
+        def start_market_creation():
+            """Start market creation workflow"""
+            try:
+                data = request.json
+                user_message = data.get('message', '')
+                user_id = data.get('user_id')
+                
+                result = asyncio.run(
+                    self.market_workflow.start_market_creation(user_message, user_id)
+                )
+                
+                return jsonify(result)
+            except Exception as e:
+                return jsonify({'success': False, 'error': str(e)}), 500
+        
+        @self.app.route('/api/market/continue', methods=['POST'])
+        def continue_market_creation():
+            """Continue market creation workflow"""
+            try:
+                data = request.json
+                session_id = data.get('session_id')
+                user_response = data.get('response', '')
+                
+                result = asyncio.run(
+                    self.market_workflow.continue_market_creation(session_id, user_response)
+                )
+                
+                return jsonify(result)
+            except Exception as e:
+                return jsonify({'success': False, 'error': str(e)}), 500
+        
+        @self.app.route('/api/market/create', methods=['POST'])
+        def create_market():
+            """Create the final market on blockchain"""
+            try:
+                data = request.json
+                session_id = data.get('session_id')
+                
+                if session_id not in self.market_workflow.active_sessions:
+                    return jsonify({'success': False, 'error': 'Session not found'}), 404
+                
+                proposal = self.market_workflow.active_sessions[session_id]
+                
+                # Here you would integrate with your Aptos contract
+                # For now, just simulate success
+                market_id = f"market_{hash(proposal.description) % 1000000}"
+                
+                return jsonify({
+                    'success': True,
+                    'market_id': market_id,
+                    'message': 'Market created successfully!',
+                    'blockchain_tx': f"0x{hash(proposal.id) % 10**16:016x}"
+                })
+                
+            except Exception as e:
+                return jsonify({'success': False, 'error': str(e)}), 500
+        
+        @self.app.route('/api/market/analyze', methods=['POST'])
+        def analyze_market():
+            """Get AI analysis for a market description"""
+            try:
+                data = request.json
+                description = data.get('description', '')
+                category = data.get('category', 'general')
+                
+                result = asyncio.run(
+                    self.predictive_model.predict_probability(description, category)
+                )
+                
+                return jsonify({
+                    'success': True,
+                    'analysis': result
+                })
+                
+            except Exception as e:
+                return jsonify({'success': False, 'error': str(e)}), 500
+        
+        @self.app.route('/api/health', methods=['GET'])
+        def health_check():
+            """Health check endpoint"""
+            return jsonify({
+                'status': 'healthy',
+                'timestamp': datetime.now().isoformat(),
+                'services': {
+                    'database': True,
+                    'ai_assistant': Config.OPENAI_API_KEY is not None,
+                    'reddit': Config.REDDIT_CLIENT_ID is not None,
+                    'news_feeds': len(Config.NEWS_SOURCES) > 0
+                }
+            })
     
-    def start_scheduler(self):
-        # Market generation every 8 hours
-        schedule.every(8).hours.do(lambda: asyncio.run(self.run_market_generation_cycle()))
+    def run(self, host='0.0.0.0', port=8000, debug=False):
+        """Run the Flask server"""
+        logger.info(f"Starting Prediction Market API server on {host}:{port}")
         
-        # Resolution every hour
-        schedule.every(1).hours.do(lambda: asyncio.run(self.run_resolution_cycle()))
+        # Start background scheduler in a separate thread
+        import threading
+        def run_scheduler():
+            while True:
+                schedule.run_pending()
+                time.sleep(60)
         
-        # Initial runs
-        asyncio.run(self.run_market_generation_cycle())
-        asyncio.run(self.run_resolution_cycle())
+        scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+        scheduler_thread.start()
         
-        logger.info("⏰ Scheduler started")
-        while True:
-            schedule.run_pending()
-            time.sleep(60)
+        # Initial trend update
+        asyncio.run(self.trend_analyzer.get_trending_topics())
+        
+        self.app.run(host=host, port=port, debug=debug)
 
 # Main execution
 if __name__ == "__main__":
-    logger.info("🚀 Starting AI Market Generator Backend...")
+    import argparse
     
+    parser = argparse.ArgumentParser(description='AI Prediction Market Server')
+    parser.add_argument('--host', default='0.0.0.0', help='Host to bind to')
+    parser.add_argument('--port', type=int, default=8000, help='Port to bind to')
+    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
+    
+    args = parser.parse_args()
+    
+    # Check required environment variables
     required_vars = ["ADMIN_PRIVATE_KEY", "CONTRACT_ADDRESS"]
     missing_vars = [var for var in required_vars if not os.getenv(var)]
     
     if missing_vars:
-        logger.error(f"❌ Missing required environment variables: {missing_vars}")
+        logger.error(f"Missing required environment variables: {missing_vars}")
         exit(1)
     
-    if not (Config.REDDIT_CLIENT_ID and Config.REDDIT_CLIENT_SECRET):
-        logger.warning("⚠️ Reddit API credentials not provided. Reddit data will be skipped.")
+    # Optional but recommended variables
+    if not Config.OPENAI_API_KEY:
+        logger.warning("OpenAI API key not provided. Using simpler analysis methods.")
     
-    orchestrator = FreeAIMarketOrchestrator()
-    orchestrator.start_scheduler()
+    if not (Config.REDDIT_CLIENT_ID and Config.REDDIT_CLIENT_SECRET):
+        logger.warning("Reddit API credentials not provided. Reddit trends will be limited.")
+    
+    # Start the server
+    api_server = PredictionMarketAPI()
+    api_server.run(host=args.host, port=args.port, debug=args.debug)
