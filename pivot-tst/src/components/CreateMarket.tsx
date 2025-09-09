@@ -1,0 +1,834 @@
+"use client";
+
+import React, { useState } from "react";
+import { Send, BarChart3, DollarSign, Globe, MessageCircle, Circle, CheckCircle, Edit3 } from "lucide-react";
+import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
+
+interface Message {
+  role: "user" | "ai";
+  content: string;
+}
+
+interface Suggestion {
+  ai_probability: number;
+  category: string;
+  confidence: number;
+  context: string;
+  description: string;
+  end_date: string;
+  key_factors: string[];
+  question: string;
+  resolution_criteria: string;
+  sentiment_score: number;
+  sources: string[];
+  title: string;
+}
+
+const CreateMarket = () => {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [suggestedReply, setSuggestedReply] = useState<string>("");
+  const [currentStep, setCurrentStep] = useState<number>(0);
+  const [progress, setProgress] = useState<string>("");
+  const [marketProposal, setMarketProposal] = useState<any>("");
+
+  // New states for suggestions
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<Suggestion | null>(null);
+  const [editingMarket, setEditingMarket] = useState(false);
+
+  const userId = "steel"; // You can make this dynamic
+
+  const handleSuggestedReply = () => {
+    if (suggestedReply) {
+      setInput(suggestedReply);
+      setSuggestedReply(""); // Clear the suggestion after use
+    }
+  };
+
+  const suggestedQuestions = [
+    "What are the best performing small cap assets today?",
+    "Which are the top 3 tokens to watch based on sentiment recently?",
+    "How will Trump's tariffs affect the price of cryptocurrency assets?",
+  ];
+
+  const formatAIResponse = (data: any) => {
+    let message = "";
+
+    if (data.prompt) {
+      message += data.prompt;
+    }
+
+    return message;
+  };
+
+  const handleSelectSuggestion = async (index: number) => {
+    // Create a temporary session ID if one doesn't exist
+    let currentSessionId = sessionId;
+    if (!currentSessionId) {
+      currentSessionId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      setSessionId(currentSessionId);
+    }
+  
+    setLoading(true);
+  
+    try {
+
+      setSelectedSuggestion(suggestions[index]);
+      setShowSuggestions(false);
+      setEditingMarket(true);
+  
+      // Update progress
+      setCurrentStep(2);
+      setProgress("Editing Market Proposal");
+  
+      // Add a message about the selection
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          content: `You've selected: "${suggestions[index].title}". Now you can make any changes before creating the market.`,
+        },
+      ]);
+
+        // Use the selected suggestion as the market proposal
+        setMarketProposal(suggestions[index]);
+ 
+    } catch (err) {
+  
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          content: `Selected: "${suggestions[index].title}". Note: Using offline mode - you can still edit and create the market.`,
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateMarket = async () => {
+    if (!selectedSuggestion && !marketProposal) return;
+
+    setLoading(true);
+
+    try {
+      // You might want to call a different endpoint to actually create the market
+      // For now, we'll simulate success
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          content: "🎉 Market created successfully! It's now live for trading.",
+        },
+      ]);
+
+      setEditingMarket(false);
+      setSelectedSuggestion(null);
+      setMarketProposal(null);
+      setCurrentStep(3);
+      setProgress("Market Created!");
+
+      // Reset input for next market
+      setInput("");
+    } catch (err) {
+      console.error("Create market error:", err);
+      setMessages((prev) => [...prev, { role: "ai", content: "⚠️ Failed to create market. Please try again." }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditMarket = () => {
+    setEditingMarket(true);
+    setShowSuggestions(false);
+  };
+
+  const handleSend = async () => {
+    if (!input.trim()) return;
+  
+    const newMessage: Message = { role: "user", content: input };
+    setMessages((prev) => [...prev, newMessage]);
+    setInput("");
+    setLoading(true);
+  
+    try {
+      let response;
+  
+      if (!sessionId) {
+        // First message -> start market creation
+        response = await fetch("http://localhost:8000/api/market/search-suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: input, user_id: userId }),
+        });
+      } else {
+        // Subsequent messages -> continue
+        response = await fetch("http://localhost:8000/api/market/continue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId, response: input }),
+        });
+      }
+  
+      const data = await response.json();
+      console.log("Server response:", data);
+  
+      if (data.success !== false && response.ok) {
+        // IMPORTANT: Set session ID immediately from search-suggestions response
+        if (data.session_id && !sessionId) {
+          setSessionId(data.session_id);
+        }
+  
+        // Handle suggestions from search-suggestions endpoint
+        if (data.prediction_markets && data.prediction_markets.length > 0) {
+          // Format the prediction_markets as suggestions
+          const formattedSuggestions = data.prediction_markets.map((market: any) => ({
+            ai_probability: market.ai_probability,
+            category: market.category,
+            confidence: market.confidence,
+            context: market.context,
+            description: market.description,
+            end_date: market.end_date,
+            key_factors: market.key_factors || [],
+            question: market.question,
+            resolution_criteria: market.resolution_criteria,
+            sentiment_score: market.sentiment_score,
+            sources: market.sources || [],
+            title: market.title
+          }));
+  
+          setSuggestions(formattedSuggestions);
+          setShowSuggestions(true);
+  
+          // Update progress
+          setCurrentStep(1);
+          setProgress("Select Market Suggestion");
+  
+          // Add a helpful message about the suggestions
+          const suggestionMessage = `I found these predictions based on your query "${data.query || input}". Please select one to customize, or create a custom market.`;
+          
+          setMessages((prev) => [...prev, { role: "ai", content: suggestionMessage }]);
+        }
+        // Handle regular suggestions (from continue endpoint)
+        else if (data.suggestions && data.suggestions.length > 0) {
+          setSuggestions(data.suggestions);
+          setShowSuggestions(true);
+  
+          // Update progress
+          setCurrentStep(1);
+          setProgress("Select Market Suggestion");
+  
+          // Add the message from the API
+          if (data.message) {
+            setMessages((prev) => [...prev, { role: "ai", content: data.message }]);
+          }
+        } 
+        // Handle AI suggestions for refinement
+        else if (data.ai_suggestion) {
+          let reply = data.ai_suggestion;
+  
+          if (reply.includes("Everything looks good")) {
+            reply = "confirm";
+          }
+  
+          setSuggestedReply(reply);
+        }
+  
+        if (data.proposal) {
+          setMarketProposal(data.proposal);
+        }
+  
+        // Update progress state
+        if (data.current_step) {
+          setCurrentStep(data.current_step);
+        }
+        if (data.progress) {
+          setProgress(data.progress);
+        }
+  
+        // Format and display the AI response (for other types of responses)
+        if (data.prompt && !data.prediction_markets) {
+          const aiMessage = formatAIResponse(data);
+          if (aiMessage) {
+            setMessages((prev) => [...prev, { role: "ai", content: aiMessage }]);
+          }
+        }
+      } else {
+        // Handle error case
+        const errorMessage = data.message || "Something went wrong. Please try again.";
+        setMessages((prev) => [...prev, { role: "ai", content: `⚠️ ${errorMessage}` }]);
+      }
+    } catch (err) {
+      console.error("Request error:", err);
+      setMessages((prev) => [
+        ...prev,
+        { role: "ai", content: "⚠️ Network error. Please check your connection and try again." },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleSuggestedQuestion = (question: string) => {
+    setInput(question);
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const router = useRouter();
+
+  const parseDate = (dateStr: string): string => {
+    if (!dateStr) return "";
+    
+    // Handle DD/MM/YYYY format
+    if (dateStr.includes("/")) {
+      const [day, month, year] = dateStr.split("/");
+      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    }
+    
+    // If already in YYYY-MM-DD format, return as is
+    return dateStr;
+  };
+  
+  const formatDateForDisplay = (dateStr: string): string => {
+    if (!dateStr) return "Invalid Date";
+    
+    try {
+      // Handle DD/MM/YYYY format
+      if (dateStr.includes("/")) {
+        const [day, month, year] = dateStr.split("/");
+        const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        return date.toLocaleDateString();
+      }
+      
+      // Handle YYYY-MM-DD format
+      const date = new Date(dateStr);
+      return date.toLocaleDateString();
+    } catch (error) {
+      return "Invalid Date";
+    }
+  };
+  
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+      <header className="border-b border-gray-700/50 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="hover: cursor-pointer flex items-center gap-4" onClick={() => router.push("/")}>
+              <h1 className="text-2xl font-bold text-white">
+                Pivot<span className="text-cyan-400">Markets</span>
+              </h1>
+              <div className="flex items-center gap-1 text-xs text-gray-400">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                Beta v0.2
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            {currentStep > 0 && (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-400">{progress}</span>
+                <div className="w-32 h-2 bg-gray-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500 ease-out"
+                    style={{ width: `${Math.min((currentStep / 4) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        {messages.length === 0 ? (
+          /* Welcome State */
+          <div className="text-center space-y-8">
+            {/* Hero Section */}
+            <motion.div
+              className="space-y-4"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+            >
+              <motion.div
+                className="flex items-center justify-center gap-4 mb-8"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+              >
+                {[
+                  { icon: BarChart3, gradient: "from-cyan-500 to-blue-600" },
+                  { icon: DollarSign, gradient: "from-purple-500 to-indigo-600" },
+                  { icon: Globe, gradient: "from-emerald-500 to-teal-600" },
+                  { icon: MessageCircle, gradient: "from-pink-500 to-rose-600" },
+                ].map(({ icon: Icon, gradient }, idx) => (
+                  <motion.div
+                    key={idx}
+                    className={`w-12 h-12 rounded-2xl bg-gradient-to-r ${gradient} flex items-center justify-center shadow-lg shadow-gray-900/50`}
+                    initial={{ opacity: 0, rotate: -90 }}
+                    animate={{ opacity: 1, rotate: 0 }}
+                    transition={{ duration: 0.5, delay: 0.3 + idx * 0.1 }}
+                    whileHover={{ scale: 1.1, rotate: 5 }}
+                  >
+                    <Icon className="w-6 h-6 text-white" />
+                  </motion.div>
+                ))}
+              </motion.div>
+
+              <motion.h2
+                className="text-4xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.4 }}
+              >
+                Greetings,{" "}
+                <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">Fren</span>
+              </motion.h2>
+              <motion.p
+                className="text-xl text-gray-400 max-w-lg mx-auto"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.5 }}
+              >
+                Want to create a bet?
+              </motion.p>
+            </motion.div>
+
+            {/* Suggested Questions - Horizontal Layout with Animations */}
+            <motion.div
+              className="space-y-4"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.6 }}
+            >
+              <p className="text-sm text-gray-400 font-medium">Popular questions to get started</p>
+              <div
+                className="flex flex-nowrap gap-4 overflow-x-auto lg:overflow-x-hidden lg:justify-between pb-4"
+                style={{
+                  scrollbarWidth: "none", // Firefox
+                  msOverflowStyle: "none", // IE/Edge
+                }}
+              >
+                {suggestedQuestions.map((question, idx) => (
+                  <motion.button
+                    key={idx}
+                    onClick={() => handleSuggestedQuestion(question)}
+                    className="group relative flex-shrink-0 w-64 lg:w-auto flex-1 p-6 bg-gray-800/90 backdrop-blur-sm rounded-2xl text-left hover:bg-gray-700/80 transition-all duration-300 overflow-clip"
+                    initial={{ opacity: 0, x: 50 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.5, delay: 0.7 + idx * 0.1 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    {/* Background gradient on hover */}
+                    <motion.div
+                      className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                      initial={false}
+                    />
+
+                    <div className="relative flex items-start gap-3">
+                      <motion.p
+                        className="text-gray-300 group-hover:text-white transition-colors leading-relaxed text-sm break-words"
+                        initial={{ opacity: 0.8 }}
+                        whileHover={{ opacity: 1 }}
+                      >
+                        {question}
+                      </motion.p>
+                    </div>
+                  </motion.button>
+                ))}
+              </div>
+            </motion.div>
+          </div>
+        ) : (
+          /* Chat Messages */
+          <div className="space-y-6 mb-8">
+            {messages.map((msg, idx) => (
+              <motion.div
+                key={idx}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: idx * 0.1 }}
+              >
+                <div
+                  className={`max-w-2xl px-6 py-4 rounded-2xl shadow-sm ${
+                    msg.role === "user"
+                      ? "bg-gradient-to-r from-cyan-600 to-blue-600 text-white ml-12"
+                      : "bg-gray-800/80 backdrop-blur-sm text-gray-200 border border-gray-700/60 mr-12"
+                  }`}
+                >
+                  <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                </div>
+              </motion.div>
+            ))}
+            {loading && (
+              <motion.div
+                className="flex justify-start"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3 }}
+              >
+                <div className="bg-gray-800/80 backdrop-blur-sm border border-gray-700/60 rounded-2xl px-6 py-4 mr-12">
+                  <div className="flex items-center gap-2 text-gray-400">
+                    <div className="flex gap-1">
+                      <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce"></div>
+                      <div
+                        className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce"
+                        style={{ animationDelay: "0.1s" }}
+                      ></div>
+                      <div
+                        className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce"
+                        style={{ animationDelay: "0.2s" }}
+                      ></div>
+                    </div>
+                    <span className="text-sm">AI is analyzing...</span>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </div>
+        )}
+
+        {/* Suggestions Display */}
+        {showSuggestions && suggestions.length > 0 && !editingMarket && (
+          <motion.div
+            className="mb-8"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <div className="bg-gradient-to-r from-gray-800/60 to-gray-700/60 backdrop-blur-sm border border-gray-600/40 rounded-2xl p-6 shadow-lg">
+              <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                <BarChart3 className="w-5 h-5" />
+                Suggested markets:
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {suggestions.map((suggestion, index) => (
+                  <motion.div
+                    key={index}
+                    className="bg-gray-800/80 backdrop-blur-sm border border-gray-700/60 rounded-xl p-6 hover:border-cyan-500/50 transition-all duration-300"
+                
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: index * 0.1 }}
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                      <span className="px-3 py-1 bg-blue-600/20 text-blue-300 rounded-full text-sm capitalize">
+                        {suggestion.category}
+                      </span>
+                      <button
+                        onClick={() => handleSelectSuggestion(index)}
+                        disabled={loading}
+                        className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        Select
+                      </button>
+                    </div>
+
+                    <h4 className="text-lg font-semibold text-white mb-2 line-clamp-2">{suggestion.title}</h4>
+
+                    <p className="text-sm text-gray-300 mb-3 line-clamp-2">{suggestion.description}</p>
+
+                    <div className="space-y-2 mb-4">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">AI Probability:</span>
+                        <span className="text-cyan-400 font-medium">
+                          {(suggestion.ai_probability * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">Confidence:</span>
+                        <span className="text-emerald-400 font-medium">
+                          {(suggestion.confidence * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">End Date:</span>
+                        <span className="text-gray-300">{formatDateForDisplay(suggestion?.end_date)}</span>
+                      </div>
+                    </div>
+
+                    {suggestion.key_factors.length > 0 && (
+                      <div className="mb-3">
+                        <h5 className="text-xs font-semibold text-cyan-400 mb-1">Key Factors</h5>
+                        <ul className="text-xs text-gray-400 space-y-1">
+                          {suggestion.key_factors.slice(0, 2).map((factor, idx) => (
+                            <li key={idx} className="flex items-start gap-1">
+                              <span className="text-cyan-400">•</span>
+                              <span className="line-clamp-1">{factor}</span>
+                            </li>
+                          ))}
+                          {suggestion.key_factors.length > 2 && (
+                            <li className="text-gray-500">... and {suggestion.key_factors.length - 2} more</li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
+                    <div className="text-xs text-gray-500 italic ">
+                      {suggestion.context}
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* Custom Option */}
+              <motion.div
+                className="mt-6 p-4 bg-gradient-to-r from-purple-600/10 to-pink-600/10 border border-purple-500/30 rounded-xl"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.5 }}
+              >
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setShowSuggestions(false);
+                      setInput("");
+                      setMessages((prev) => [
+                        ...prev,
+                        { role: "ai", content: "Let's create a custom market! What would you like to predict?" },
+                      ]);
+                    }}
+                    className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                    Create Custom Market
+                  </button>
+                  <div className="text-sm text-purple-300">Create your own market with custom parameters</div>
+                </div>
+              </motion.div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Market Proposal Analysis (Editing Mode) */}
+        {(marketProposal || selectedSuggestion) && editingMarket && (
+          <motion.div
+            className="mb-8"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <div className="bg-gradient-to-r from-gray-800/60 to-gray-700/60 backdrop-blur-sm border border-gray-600/40 rounded-2xl p-6 shadow-lg">
+              <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                Market Proposal - Make Changes
+                <Edit3 className="w-5 h-5 text-yellow-400" />
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Market Details */}
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-cyan-400 mb-1">Market Question</h4>
+                    <textarea
+                      defaultValue={marketProposal?.question || selectedSuggestion?.question || ""}
+                      className="w-full bg-gray-700/50 border border-gray-600/50 rounded-lg p-3 text-gray-200 text-sm resize-none"
+                      rows={3}
+                      placeholder="Edit the market question..."
+                    />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-cyan-400 mb-1">Category</h4>
+                    <input
+                      defaultValue={marketProposal?.category || selectedSuggestion?.category || ""}
+                      className="w-full bg-gray-700/50 border border-gray-600/50 rounded-lg p-3 text-gray-200 text-sm"
+                      placeholder="Edit category..."
+                    />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-cyan-400 mb-1">End Date</h4>
+                    <input
+                      type="date"
+                      defaultValue={
+                        marketProposal?.end_date
+                          ? parseDate(marketProposal.end_date)
+                          : selectedSuggestion?.end_date
+                            ? parseDate(selectedSuggestion.end_date)
+                            : ""
+                      }
+                      className="w-full bg-gray-700/50 border border-gray-600/50 rounded-lg p-3 text-gray-200 text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* AI Analysis */}
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-cyan-400 mb-2">AI Analysis</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">AI Probability:</span>
+                        <span className="text-white font-medium">
+                          {((marketProposal?.ai_probability || selectedSuggestion?.ai_probability || 0) * 100).toFixed(
+                            1,
+                          )}
+                          %
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Confidence:</span>
+                        <span className="text-white font-medium">
+                          {((marketProposal?.confidence || selectedSuggestion?.confidence || 0) * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Sentiment Score:</span>
+                        <span className="text-white font-medium">
+                          {(
+                            (marketProposal?.sentiment_score || selectedSuggestion?.sentiment_score || 0) * 100
+                          ).toFixed(1)}
+                          %
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {(marketProposal?.key_factors || selectedSuggestion?.key_factors) && (
+                    <div>
+                      <h5 className="text-xs font-semibold text-cyan-400 mb-1">Key Factors</h5>
+                      <ul className="text-xs text-gray-300 space-y-1">
+                        {(marketProposal?.key_factors || selectedSuggestion?.key_factors || []).map(
+                          (factor: string, idx: number) => (
+                            <li key={idx} className="flex items-start gap-1">
+                              <span className="text-cyan-400">•</span>
+                              {factor}
+                            </li>
+                          ),
+                        )}
+                      </ul>
+
+                      <div>
+                      <h5 className="text-xs mt-4 font-semibold text-cyan-400 mb-1">Context</h5>
+                      <div className="text-xs text-gray-500 italic ">{marketProposal.context}</div>
+                    </div>
+                    </div>
+                    
+                  )}
+                </div>
+              </div>
+
+              {/* Resolution Criteria */}
+              <div className="mt-4 pt-4 border-t border-gray-600/30">
+                <h4 className="text-sm font-semibold text-cyan-400 mb-1">Resolution Criteria</h4>
+                <textarea
+                  defaultValue={marketProposal?.resolution_criteria || selectedSuggestion?.resolution_criteria || ""}
+                  className="w-full bg-gray-700/50 border border-gray-600/50 rounded-lg p-3 text-gray-300 text-sm resize-none"
+                  rows={3}
+                  placeholder="Edit resolution criteria..."
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 mt-6 flex-wrap">
+                <button
+                  onClick={handleCreateMarket}
+                  disabled={loading}
+                  className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
+                >
+                  <CheckCircle className="w-4 h-4" />✅ Create Market
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingMarket(false);
+                    setSelectedSuggestion(null);
+                    setMarketProposal(null);
+                  }}
+                  className="px-6 py-3 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-500 hover:to-gray-600 text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2"
+                >
+                  🔙 Back to Suggestions
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Input Area */}
+        <motion.div
+          className="sticky bottom-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.8 }}
+        >
+          {/* Suggested Reply Button */}
+          {suggestedReply && !showSuggestions && !editingMarket && (
+            <motion.div
+              className="mb-3 flex justify-center"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+            >
+              <button
+                onClick={handleSuggestedReply}
+                className="group px-4 py-2 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 backdrop-blur-sm border border-cyan-500/30 rounded-xl text-cyan-300 text-sm hover:from-cyan-600/30 hover:to-blue-600/30 hover:border-cyan-400/50 transition-all duration-200 flex items-center gap-2"
+              >
+                <span className="text-xs opacity-70">💡 Suggested:</span>
+                <span className="font-medium">"{suggestedReply}"</span>
+              </button>
+            </motion.div>
+          )}
+
+          <div className="bg-gray-800/80 backdrop-blur-sm border border-gray-700/60 rounded-2xl shadow-lg shadow-gray-900/20 p-2 pt-0">
+            <div className="flex items-end gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 flex items-center justify-center flex-shrink-0">
+                <Circle className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1 min-h-[40px] max-h-32">
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder={
+                    showSuggestions
+                      ? "Search for more suggestions..."
+                      : editingMarket
+                        ? "Make changes to the market proposal..."
+                        : "What's the prediction you'd like people to bet on?"
+                  }
+                  className="w-full resize-none border-none outline-none bg-transparent text-gray-200 placeholder-gray-500 pt-3 px-2 text-base leading-relaxed"
+                  style={{ minHeight: "40px" }}
+                  rows={1}
+                  onInput={(e) => {
+                    const target = e.target as HTMLTextAreaElement;
+                    target.style.height = "auto";
+                    target.style.height = Math.min(target.scrollHeight, 128) + "px";
+                  }}
+                  disabled={showSuggestions || editingMarket}
+                />
+              </div>
+              {!showSuggestions && !editingMarket && (
+                <motion.button
+                  onClick={handleSend}
+                  disabled={loading || !input.trim()}
+                  className="w-10 h-10 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:from-gray-600 disabled:to-gray-700 flex items-center justify-center transition-all duration-200 flex-shrink-0"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Send className="w-4 h-4 text-white" />
+                </motion.button>
+              )}
+            </div>
+          </div>
+          {!showSuggestions && !editingMarket && (
+            <p className="text-xs text-gray-500 text-center mt-3">Press Enter to send, Shift + Enter for new line</p>
+          )}
+        </motion.div>
+      </div>
+    </div>
+  );
+};
+
+export default CreateMarket;
