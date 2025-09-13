@@ -1,503 +1,602 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import {
-  TrendingUp,
-  TrendingDown,
-  Plus,
-  MessageCircle,
-  Search,
-  Filter,
-  BarChart3,
-  Clock,
-  Users,
-  DollarSign,
-  Sparkles,
-  Target,
-  Activity,
-  ChevronRight,
-  Info,
-  ArrowUp,
-  ArrowDown,
-} from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { Plus, MessageCircle, Search, Clock, Users, DollarSign, Sparkles, Target, ChevronDown } from "lucide-react";
+import { WalletSelector } from "../components/WalletSelector";
 import { useRouter } from "next/navigation";
+import { aptosClient } from "@/utils/aptosClient";
+import { getAllMarketIds, getAllMarketSummaries, getMarketDetails, getMarketSummary } from "./view-functions/markets";
+import { convertAmountFromHumanReadableToOnChain } from "@/utils/helpers";
+import { MODULE_ADDRESS } from "@/constants";
+import { InputTransactionData, useWallet } from "@aptos-labs/wallet-adapter-react";
+import { BuyPositionArguments } from "./entry-functions/buy_position";
+import { useQueryClient } from "@tanstack/react-query";
 
-// Mock data for trending topics and markets
-const trendingTopics = [
-  { id: 1, topic: "AI regulation", volume: "+234%", category: "Technology" },
-  { id: 2, topic: "Climate summit", volume: "+156%", category: "Environment" },
-  { id: 3, topic: "Election polls", volume: "+189%", category: "Politics" },
-  { id: 4, topic: "Crypto adoption", volume: "+298%", category: "Finance" },
-];
+const categories = ["All markets", "Crypto", "Technology", "Climate", "Space", "Finance", "Politics"];
+const statusFilters = ["All Status", "Live", "Ended"];
+const sortOptions = ["Latest", "Volume", "Participants", "Ending Soon"];
 
-const activeMarkets = [
-  {
-    id: 1,
-    title: "Will Bitcoin reach $100k by end of 2025?",
-    category: "Crypto",
-    yesPrice: 0.67,
-    noPrice: 0.33,
-    volume: "$2.4M",
-    participants: 1247,
-    timeLeft: "23d 4h",
-    trend: "up",
-    confidence: 0.78,
-  },
-  {
-    id: 2,
-    title: "Will AI achieve AGI breakthrough in 2025?",
-    category: "Technology",
-    yesPrice: 0.23,
-    noPrice: 0.77,
-    volume: "$890K",
-    participants: 892,
-    timeLeft: "11d 16h",
-    trend: "up",
-    confidence: 0.65,
-  },
-  {
-    id: 3,
-    title: "Will global temperature rise exceed 1.5°C by 2030?",
-    category: "Climate",
-    yesPrice: 0.84,
-    noPrice: 0.16,
-    volume: "$1.6M",
-    participants: 2156,
-    timeLeft: "2d 8h",
-    trend: "down",
-    confidence: 0.91,
-  },
-];
+function getTimeLeft(endTimeEpoch: string) {
+  const now = Date.now() / 1000; // current time in seconds
+  const secondsLeft = parseInt(endTimeEpoch) - now;
 
-const aiSuggestions = [
-  {
-    id: 1,
-    title: "US Presidential Election Outcome",
-    confidence: 0.85,
-    reason: "High search volume + trending political discussions",
-    category: "Politics",
-  },
-  {
-    id: 2,
-    title: "Next Federal Reserve Interest Rate Decision",
-    confidence: 0.72,
-    reason: "Economic indicators showing volatility",
-    category: "Finance",
-  },
-  {
-    id: 3,
-    title: "SpaceX Mars Mission Timeline",
-    confidence: 0.68,
-    reason: "Recent aerospace developments trending",
-    category: "Space",
-  },
-];
+  if (secondsLeft <= 0) return "Ended";
 
-// Animation variants
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.2,
+  const days = Math.floor(secondsLeft / (3600 * 24));
+  const hours = Math.floor((secondsLeft % (3600 * 24)) / 3600);
+  const minutes = Math.floor((secondsLeft % 3600) / 60);
+
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+/**
+ * Buy a position in a market
+ */
+export const buyPosition = (args: BuyPositionArguments): InputTransactionData => {
+  const { marketId, outcome, amount, maxSlippage } = args;
+
+  return {
+    data: {
+      function: `${MODULE_ADDRESS}::pivot_market_tab::buy_position`,
+      functionArguments: [marketId, outcome, amount, maxSlippage],
     },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      type: "spring",
-      stiffness: 100,
-      damping: 15,
-    },
-  },
+  };
 };
 
 const MarketCard = ({ market, onPredict }: any) => {
-  const isYesTrending = market.trend === "up";
+  const queryClient = useQueryClient();
+  const { signAndSubmitTransaction, account } = useWallet();
+
+  const onBuyPositionClick = async (
+    marketId: number,
+    outcome: "YES" | "NO",
+    amountUSDC: number,
+    maxSlippageBasisPoints: number, // Already in basis points, don't convert
+  ) => {
+    if (!account) return;
+
+    const USDC_DECIMALS = 6;
+    const outcomeValue = outcome === "YES" ? 1 : 2;
+
+    // Don't multiply by 100 since it's already in basis points
+    const maxSlippage = Math.max(maxSlippageBasisPoints, 100); // Minimum 1% slippage
+
+    try {
+      console.log("Max slippage (basis points):", maxSlippage);
+
+      const response = await signAndSubmitTransaction(
+        buyPosition({
+          marketId,
+          outcome: outcomeValue,
+          amount: convertAmountFromHumanReadableToOnChain(amountUSDC, USDC_DECIMALS),
+          maxSlippage: maxSlippage, // Already in basis points
+        }),
+      );
+
+      await aptosClient().waitForTransaction({
+        transactionHash: response.hash,
+      });
+
+      queryClient.refetchQueries();
+      console.log("Buy position response:", response);
+      return response;
+    } catch (error) {
+      console.error("Error buying position:", error);
+      throw error;
+    }
+  };
+  const getStatusColor = (status: any) => {
+    switch (status) {
+      case "Live":
+        return "bg-green-500 text-white";
+      case "Resolved":
+        return "bg-gray-500 text-white";
+      default:
+        return "bg-blue-500 text-white";
+    }
+  };
 
   return (
-    <motion.div
-      variants={itemVariants}
-      className="bg-white/5 backdrop-blur-sm border border-gray-700/50 rounded-lg p-4 hover:border-gray-600/50 transition-all duration-300 group cursor-pointer"
+    <div
+      className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-6  hover:shadow-lg transition-all duration-300 cursor-pointer group animate-fadeInUp"
       onClick={() => onPredict(market)}
     >
-      <div className="flex justify-between items-start mb-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-full">{market.category}</span>
-            <div className="flex items-center gap-1">
-              {isYesTrending ? (
-                <TrendingUp className="w-3 h-3 text-green-400" />
-              ) : (
-                <TrendingDown className="w-3 h-3 text-red-400" />
-              )}
-              <span className="text-xs text-gray-400">{Math.round(market.confidence * 100)}% confidence</span>
-            </div>
+      {/* Header */}
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex-1 pr-4">
+          <h3 className="text-white font-semibold text-xl transition-colors">{market.title}</h3>
+          <p className="text-gray-400 text-sm line-clamp-2">{market.description}</p>
+        </div>
+        <span
+          className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(
+            market.status,
+          )} shadow-sm`}
+        >
+          {market.status}
+        </span>
+      </div>
+
+      {/* Market Info */}
+      <div className="mb-4">
+        <div className="text-lg font-bold text-blue-400 mb-1">
+          {market.minBet} {market.maxBet}
+        </div>
+        <div className="text-sm text-gray-400">{market.type}</div>
+      </div>
+
+      {/* Price Display */}
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div
+          className="bg-green-500/10 border border-green-500/20 rounded-lg p-3"
+          onClick={async () => {
+            if (!account) return;
+
+            try {
+              const marketId = market.id;
+              const amountUSDC = 2;
+              const currentPrice = market.yesPrice * 10000; // e.g., 0.5 * 10000 = 5000
+              const shares = Math.floor((amountUSDC * 10000) / currentPrice);
+              const totalShares = (market.yesShares || 0) + (market.noShares || 0) + shares; // Fetch shares via view fn
+              const newPrice = Math.floor((((market.yesShares || 0) + shares) * 10000) / totalShares);
+              const impact = Math.abs(newPrice - currentPrice);
+              const suggestedSlippage = impact + 50;
+
+              const maxSlippagePercent = suggestedSlippage; // 1% slippage tolerance
+              console.log("maxSlippagePercent", maxSlippagePercent, impact, newPrice, totalShares);
+              await onBuyPositionClick(marketId, "YES", amountUSDC, maxSlippagePercent);
+            } catch (error) {
+              console.error("Error buying YES position:", error);
+            }
+          }}
+        >
+          <div className="text-green-400 text-sm font-medium mb-1">YES</div>
+          <div className="text-green-300 text-xl font-bold">{(market.yesPrice * 100).toFixed(0)}%</div>
+          <div className="text-green-400/70 text-xs">
+            {market.trend === "up" ? "↗" : "↘"} {Math.round(market.confidence * 100)}%
           </div>
-          <h3 className="text-white font-medium text-sm group-hover:text-blue-400 transition-colors">{market.title}</h3>
         </div>
-        <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-blue-400 transition-colors" />
+        <div
+          className="bg-red-500/10 border border-red-500/20 rounded-lg p-3"
+          onClick={async () => {
+            if (!account) return;
+
+            try {
+              const marketId = market.id;
+              const amountUSDC = 2;
+              const outcome = "NO";
+
+              // Get current market state to calculate proper prices
+              const totalShares = (market.yesShares || 0) + (market.noShares || 0);
+
+              // Calculate current price based on market state
+              let currentPrice;
+              if (totalShares === 0) {
+                currentPrice = 5000; // 50% default price when no shares exist
+              } else {
+                if (outcome === "YES") {
+                  currentPrice = Math.floor((market.yesShares * 10000) / totalShares);
+                } else {
+                  currentPrice = Math.floor((market.noShares * 10000) / totalShares);
+                }
+              }
+
+              // Prevent division by zero and handle edge cases
+              if (currentPrice <= 0) {
+                currentPrice = 100; // Minimum price of 1% (100 basis points)
+              }
+              if (currentPrice >= 10000) {
+                currentPrice = 9900; // Maximum price of 99% (9900 basis points)
+              }
+
+              console.log("Current price for", outcome, ":", currentPrice);
+
+              // Calculate shares to be purchased
+              const shares = Math.floor((amountUSDC * 10000) / currentPrice);
+
+              // Estimate price impact
+              const newTotalShares = totalShares + shares;
+              const newOutcomeShares =
+                outcome === "YES" ? (market.yesShares || 0) + shares : (market.noShares || 0) + shares;
+
+              const newPrice =
+                newTotalShares > 0 ? Math.floor((newOutcomeShares * 10000) / newTotalShares) : currentPrice;
+
+              const priceImpact = Math.abs(newPrice - currentPrice);
+              const suggestedSlippage = Math.max(priceImpact + 50, 100); // At least 1% slippage
+
+              console.log("Price impact:", priceImpact, "Suggested slippage:", suggestedSlippage);
+
+              // Use reasonable slippage (not percentage, but basis points directly)
+              await onBuyPositionClick(marketId, outcome, amountUSDC, suggestedSlippage);
+            } catch (error) {
+              console.error("Error buying NO position:", error);
+            }
+          }}
+        >
+          <div className="text-red-400 text-sm font-medium mb-1">NO</div>
+          <div className="text-red-300 text-xl font-bold">{(market.noPrice * 100).toFixed(0)}%</div>
+          <div className="text-red-400/70 text-xs">
+            {market.trend === "down" ? "↗" : "↘"} {100 - Math.round(market.confidence * 100)}%
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 mb-3">
-        <div className="bg-green-500/10 border border-green-500/20 rounded p-2">
-          <div className="text-green-400 text-xs font-medium">YES</div>
-          <div className="text-green-300 text-lg font-bold">{(market.yesPrice * 100).toFixed(0)}$</div>
-        </div>
-        <div className="bg-red-500/10 border border-red-500/20 rounded p-2">
-          <div className="text-red-400 text-xs font-medium">NO</div>
-          <div className="text-red-300 text-lg font-bold">{(market.noPrice * 100).toFixed(0)}$</div>
-        </div>
-      </div>
-
-      <div className="flex justify-between text-xs text-gray-400">
-        <div className="flex items-center gap-3">
+      {/* Stats */}
+      <div className="flex justify-between items-center text-sm text-gray-300">
+        <div className="flex items-center gap-4">
           <span className="flex items-center gap-1">
-            <DollarSign className="w-3 h-3" />
+            <DollarSign className="w-4 h-4 text-gray-400" />
             {market.volume}
           </span>
           <span className="flex items-center gap-1">
-            <Users className="w-3 h-3" />
-            {market.participants}
+            <Users className="w-4 h-4 text-gray-400" />
+            {market.participants.toLocaleString()}
           </span>
         </div>
         <span className="flex items-center gap-1">
-          <Clock className="w-3 h-3" />
+          <Clock className="w-4 h-4 text-gray-400" />
           {market.timeLeft}
         </span>
       </div>
-    </motion.div>
+    </div>
   );
 };
 
-const TrendingCard = ({ topic }: any) => (
-  <motion.div
-    variants={itemVariants}
-    className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-lg p-3 cursor-pointer group"
-  >
-    <div className="flex justify-between items-center">
-      <div>
-        <h4 className="text-white font-medium text-sm group-hover:text-purple-400 transition-colors">{topic.topic}</h4>
-        <p className="text-gray-400 text-xs">{topic.category}</p>
+const AIAssistantPanel = ({ isVisible, onClose }: any) => {
+  if (!isVisible) return null;
+
+  return (
+    <div className="fixed right-4 top-20 bottom-4 w-80 bg-gray-900/95 backdrop-blur-lg border border-gray-700/50 rounded-lg z-50 flex flex-col animate-slideInRight">
+      <div className="flex items-center justify-between p-4 border-b border-gray-700/50">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-blue-400" />
+          <h3 className="text-white font-medium">AI Market Assistant</h3>
+        </div>
+        <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors text-xl">
+          ×
+        </button>
       </div>
-      <div className="text-right">
-        <div className="flex items-center gap-1">
-          <ArrowUp className="w-3 h-3 text-green-400" />
-          <span className="text-green-400 font-medium text-sm">{topic.volume}</span>
+
+      <div className="flex-1 p-4 overflow-y-auto">
+        <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
+          <h4 className="text-blue-300 font-medium mb-2">Market Insights</h4>
+          <p className="text-blue-200 text-sm">
+            Current sentiment shows high volatility in crypto markets. AI-related predictions are gaining significant
+            traction with increased trading volume this week.
+          </p>
+        </div>
+      </div>
+
+      <div className="p-4 border-t border-gray-700/50">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            placeholder="Ask about market trends..."
+            className="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2 text-white text-sm placeholder-gray-400 focus:outline-none focus:border-blue-500"
+          />
+          <button className="px-4 py-2 bg-[#008259] hover:bg-blue-500 text-white rounded transition-colors">
+            <MessageCircle className="w-4 h-4" />
+          </button>
         </div>
       </div>
     </div>
-  </motion.div>
-);
-
-const AIAssistantPanel = ({ isVisible, onClose, onCreateMarket }: any) => {
-  const [message, setMessage] = useState("");
-
-  return (
-    <AnimatePresence>
-      {isVisible && (
-        <motion.div
-          initial={{ opacity: 0, x: 300 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: 300 }}
-          className="fixed right-4 top-20 bottom-4 w-80 bg-gray-900/95 backdrop-blur-lg border border-gray-700/50 rounded-lg z-50 flex flex-col"
-        >
-          <div className="flex items-center justify-between p-4 border-b border-gray-700/50">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-blue-400" />
-              <h3 className="text-white font-medium">AI Market Assistant</h3>
-            </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
-              ×
-            </button>
-          </div>
-
-          <div className="flex-1 p-4 overflow-y-auto">
-            <div className="mb-4">
-              <h4 className="text-white text-sm font-medium mb-3">Trending Opportunities</h4>
-              <div className="space-y-2">
-                {aiSuggestions.map((suggestion) => (
-                  <motion.div
-                    key={suggestion.id}
-                    className="bg-white/5 border border-gray-700/30 rounded p-3 cursor-pointer group"
-                    onClick={() => onCreateMarket(suggestion)}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <h5 className="text-white text-xs font-medium group-hover:text-blue-400 transition-colors">
-                        {suggestion.title}
-                      </h5>
-                      <span className="text-blue-400 text-xs">{Math.round(suggestion.confidence * 100)}%</span>
-                    </div>
-                    <p className="text-gray-400 text-xs mb-2">{suggestion.reason}</p>
-                    <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded">
-                      {suggestion.category}
-                    </span>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <h4 className="text-white text-sm font-medium mb-3">Market Analysis</h4>
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded p-3">
-                <p className="text-blue-300 text-xs">
-                  Current market sentiment is bullish on tech stocks, with AI-related predictions showing increased
-                  volume. Consider creating markets around upcoming tech earnings.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-4 border-t border-gray-700/50">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Ask about market trends..."
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                className="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2 text-white text-sm placeholder-gray-400 focus:outline-none focus:border-blue-500"
-              />
-              <button className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors">
-                <MessageCircle className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
   );
 };
 
-export default function PredictionMarketApp() {
-  const [activeTab, setActiveTab] = useState("markets");
-  const [showAIAssistant, setShowAIAssistant] = useState(false);
-  const [selectedMarket, setSelectedMarket] = useState(null);
+export default function PivotMarketApp() {
+  const [markets, setMarkets] = useState<any[]>([]);
+  const [filteredMarkets, setFilteredMarkets] = useState<any[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState("All markets");
+  const [selectedStatus, setSelectedStatus] = useState("All Status");
+  const [sortBy, setSortBy] = useState("Latest");
   const [searchQuery, setSearchQuery] = useState("");
-  const [connected, setConnected] = useState(true); // Mock wallet connection
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
 
-  const tabs = [
-    { id: "markets", label: "Active Markets", icon: Target },
-    { id: "trending", label: "Trending", icon: TrendingUp },
-    { id: "portfolio", label: "My Positions", icon: BarChart3 },
-    { id: "history", label: "History", icon: Activity },
-  ];
+  // Get market details
+  useEffect(() => {
+    const fetchMarkets = async () => {
+      try {
+        const marketData = await getAllMarketSummaries();
+        console.log("markets--", marketData);
+        setMarkets(marketData);
+      } catch (error) {
+        console.error("Failed to fetch markets:", error);
+      }
+    };
 
-  const handlePredictMarket = (market: React.SetStateAction<null>) => {
-    setSelectedMarket(market);
-    // Open prediction modal/interface
+    fetchMarkets();
+  }, []);
+
+  // Filter and sort markets
+  useEffect(() => {
+    let filtered = markets.filter((market) => {
+      const matchesSearch =
+        market.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        market.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory = selectedCategory === "All markets" || market.category === selectedCategory;
+      const matchesStatus = selectedStatus === "All Status" || market.status === selectedStatus.toLowerCase();
+
+      return matchesSearch && matchesCategory && matchesStatus;
+    });
+
+    // Sort markets
+    switch (sortBy) {
+      case "Volume":
+        filtered.sort(
+          (a, b) => parseFloat(b.volume.replace(/[$MK,]/g, "")) - parseFloat(a.volume.replace(/[$MK,]/g, "")),
+        );
+        break;
+      case "Participants":
+        filtered.sort((a, b) => b.participants - a.participants);
+        break;
+      case "Ending Soon":
+        filtered.sort((a, b) => {
+          const aTime =
+            parseInt(a.timeLeft.split("d")[0]) * 24 + parseInt(a.timeLeft.split("h")[0].split(" ")[1] || "0");
+          const bTime =
+            parseInt(b.timeLeft.split("d")[0]) * 24 + parseInt(b.timeLeft.split("h")[0].split(" ")[1] || "0");
+          return aTime - bTime;
+        });
+        break;
+      default:
+        // Latest - default order
+        break;
+    }
+    if (filtered) {
+      setFilteredMarkets(filtered);
+    }
+  }, [markets, searchQuery, selectedCategory, selectedStatus, sortBy]);
+
+  const handlePredictMarket = (market: any) => {
+    console.log("Predicting on market:", market);
+    // Handle market prediction logic
   };
 
-  const handleCreateMarket = (suggestion: any) => {
-    console.log("Creating market from AI suggestion:", suggestion);
-    // Handle market creation
-  };
+  // Example usage function similar to your onStakeClick
+
+  const totalMarkets = filteredMarkets.length;
   const router = useRouter();
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+    <div className="min-h-screen bg-gray-900">
+      <style jsx>{`
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes slideInRight {
+          from {
+            opacity: 0;
+            transform: translateX(300px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+
+        @keyframes pulse {
+          0%,
+          100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.7;
+          }
+        }
+
+        .animate-fadeInUp {
+          animation: fadeInUp 0.6s ease-out forwards;
+        }
+
+        .animate-slideInRight {
+          animation: slideInRight 0.3s ease-out forwards;
+        }
+
+        .animate-pulse {
+          animation: pulse 2s infinite;
+        }
+      `}</style>
+
       {/* Header */}
-      <motion.header
-        className="border-b border-gray-700/50 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-40"
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
-        <div className="max-w-7xl mx-auto px-4 py-4">
+      <header className="border-b border-gray-700/50 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-40 animate-fadeInUp">
+        <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-6">
               <h1 className="text-2xl font-bold text-white">
-                Pivot<span className="text-blue-400">{""}AI</span>
+                Pivot<span className="text-blue-400">AI</span>
               </h1>
-              <div className="flex items-center gap-1 text-xs text-gray-400">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                Beta v0.2
-              </div>
+              <nav className="flex items-center gap-6 text-gray-300">
+                <a href="#" className="hover:text-white transition-colors">
+                  Trading
+                </a>
+                <a href="#" className="hover:text-white transition-colors">
+                  Earn
+                </a>
+                <a href="#" className="hover:text-white transition-colors">
+                  Launch
+                </a>
+                <a href="#" className="hover:text-white transition-colors">
+                  More
+                </a>
+              </nav>
             </div>
 
             <div className="flex items-center gap-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="Search markets..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 w-64"
-                />
-              </div>
-
               <button
                 onClick={() => setShowAIAssistant(!showAIAssistant)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
-                  showAIAssistant ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                  showAIAssistant ? "bg-[#008259] text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700"
                 }`}
               >
                 <Sparkles className="w-4 h-4" />
                 AI Assistant
               </button>
 
-              <button
-                onClick={() => router.push("/create")}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Create Market
-              </button>
+              <div className="flex gap-2 items-center flex-wrap">
+                <WalletSelector />
+              </div>
             </div>
           </div>
         </div>
-      </motion.header>
+      </header>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="flex gap-6">
-          {/* Main Content */}
-          <div className="flex-1">
-            {/* Stats Overview */}
-            {/* <motion.div 
-              className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6"
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
-            >
-              {[
-                { label: "Total Volume", value: "$12.4M", change: "+23%", icon: DollarSign },
-                { label: "Active Markets", value: "1,247", change: "+12%", icon: Target },
-                { label: "Total Users", value: "89.2K", change: "+45%", icon: Users },
-                { label: "AI Accuracy", value: "87.3%", change: "+2%", icon: Sparkles }
-              ].map((stat, index) => (
-                <motion.div
-                  key={index}
-                  variants={itemVariants}
-                  className="bg-white/5 backdrop-blur-sm border border-gray-700/50 rounded-lg p-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-gray-400 text-sm">{stat.label}</p>
-                      <p className="text-white text-xl font-bold">{stat.value}</p>
-                    </div>
-                    <div className="flex flex-col items-end">
-                      <stat.icon className="w-5 h-5 text-blue-400 mb-1" />
-                      <span className="text-green-400 text-xs">{stat.change}</span>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </motion.div> */}
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Hero Section */}
+        <div className="mb-12 mt-6 animate-fadeInUp" style={{ animationDelay: "0.2s" }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold text-white mb-4">Prediction Markets</h1>
+              <p className="text-gray-400 text-lg max-w-2xl">
+                Trade predictions on future events. Maximize your returns by participating in the world's most advanced
+                prediction markets powered by AI insights.
+              </p>
 
-            {/* Navigation Tabs */}
-            <motion.div
-              className="flex gap-1 mb-6 bg-gray-800/50 rounded-lg p-1"
-              variants={itemVariants}
-              initial="hidden"
-              animate="visible"
-            >
-              {tabs.map((tab) => (
+              <div className="flex items-center mt-6 gap-4">
                 <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all duration-200 ${
-                    activeTab === tab.id
-                      ? "bg-blue-600 text-white"
-                      : "text-gray-400 hover:text-white hover:bg-gray-700/50"
-                  }`}
+                  className="flex items-center gap-2 px-6 py-3 bg-[#008259] hover:bg-[#00553A] text-white rounded-lg transition-colors"
+                  onClick={() => router.push("/create")}
                 >
-                  <tab.icon className="w-4 h-4" />
-                  {tab.label}
+                  <Plus className="w-5 h-5" />
+                  Create Market
                 </button>
-              ))}
-            </motion.div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-            {/* Content Area */}
-            <motion.div variants={containerVariants} initial="hidden" animate="visible">
-              {activeTab === "markets" && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {activeMarkets.map((market) => (
-                    <MarketCard key={market.id} market={market} onPredict={handlePredictMarket} />
-                  ))}
-                </div>
-              )}
-
-              {activeTab === "trending" && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {trendingTopics.map((topic) => (
-                    <TrendingCard key={topic.id} topic={topic} />
-                  ))}
-                </div>
-              )}
-
-              {activeTab === "portfolio" && (
-                <div className="bg-white/5 backdrop-blur-sm border border-gray-700/50 rounded-lg p-6 text-center">
-                  <BarChart3 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-white text-lg font-medium mb-2">No Positions Yet</h3>
-                  <p className="text-gray-400 mb-4">Start predicting to build your portfolio</p>
-                  <button className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors">
-                    Browse Markets
-                  </button>
-                </div>
-              )}
-
-              {activeTab === "history" && (
-                <div className="bg-white/5 backdrop-blur-sm border border-gray-700/50 rounded-lg p-6 text-center">
-                  <Activity className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-white text-lg font-medium mb-2">No Trading History</h3>
-                  <p className="text-gray-400">Your prediction history will appear here</p>
-                </div>
-              )}
-            </motion.div>
+        {/* Filters Section */}
+        <div className="mb-8 animate-fadeInUp" style={{ animationDelay: "0.4s" }}>
+          {/* Category Tabs */}
+          <div className="flex items-center gap-1 mb-6 flex-wrap">
+            {categories.map((category) => (
+              <button
+                key={category}
+                onClick={() => setSelectedCategory(category)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  selectedCategory === category
+                    ? "bg-[#008259] text-white"
+                    : "text-gray-400 hover:text-white hover:bg-gray-800"
+                }`}
+              >
+                {category}
+                {category === "All markets" && (
+                  <span className="ml-2 px-2 py-1 bg-[#00553A] text-white text-xs rounded-full">{totalMarkets}</span>
+                )}
+              </button>
+            ))}
           </div>
 
-          {/* Sidebar - Hidden when AI Assistant is open */}
-          {!showAIAssistant && (
-            <motion.div
-              className="w-80 space-y-6"
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-            >
-              {/* Trending Topics */}
-              <div className="bg-white/5 backdrop-blur-sm border border-gray-700/50 rounded-lg p-4">
-                <h3 className="text-white font-medium mb-4 flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-blue-400" />
-                  Trending Topics
-                </h3>
-                <div className="space-y-3">
-                  {trendingTopics.slice(0, 3).map((topic) => (
-                    <TrendingCard key={topic.id} topic={topic} />
-                  ))}
+          {/* Search and Filters */}
+          <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
+            <div className="flex-1 relative max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <div className="flex items-center gap-2 text-gray-400">
+                <span className="text-sm">Filter by</span>
+                <div className="relative">
+                  <select
+                    value={selectedStatus}
+                    onChange={(e) => setSelectedStatus(e.target.value)}
+                    className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 pr-8 text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+                  >
+                    {statusFilters.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-4 h-4 absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none" />
                 </div>
               </div>
 
-              {/* Quick Actions */}
-              <div className="bg-white/5 backdrop-blur-sm border border-gray-700/50 rounded-lg p-4">
-                <h3 className="text-white font-medium mb-4">Quick Actions</h3>
-                <div className="space-y-2">
-                  <button className="w-full flex items-center gap-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-blue-400 hover:bg-blue-500/20 transition-colors">
-                    <Plus className="w-4 h-4" />
-                    Create Custom Market
-                  </button>
-                  <button className="w-full flex items-center gap-3 p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg text-purple-400 hover:bg-purple-500/20 transition-colors">
-                    <Sparkles className="w-4 h-4" />
-                    AI Market Suggestions
-                  </button>
+              <div className="flex items-center gap-2 text-gray-400">
+                <span className="text-sm">Sort by</span>
+                <div className="relative">
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 pr-8 text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+                  >
+                    {sortOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-4 h-4 absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none" />
                 </div>
               </div>
-            </motion.div>
-          )}
+            </div>
+          </div>
         </div>
+
+        {/* Markets Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          {filteredMarkets.map((rawMarket: any, index) => {
+            // Determine market status
+            const currentTime = new Date("2025-09-12T20:00:00+01:00").getTime() / 1000;
+            const endTime = parseInt(rawMarket.endTime);
+            const status = rawMarket.resolved || currentTime >= endTime ? "Resolved" : "Live";
+
+            const transformedMarket = {
+              ...rawMarket,
+              yesPrice: parseFloat(rawMarket.yesPrice) / 10000,
+              noPrice: parseFloat(rawMarket.noPrice) / 10000,
+              volume: (parseFloat(rawMarket.totalValueLocked) / 1000000).toLocaleString("en-US", {
+                style: "currency",
+                currency: "USD",
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              }), // "12000000" → "$12.00"
+              participants: parseInt(rawMarket.participantCount),
+              confidence: 0.5, // Placeholder, maybe calculated later
+              trend: "up", // Placeholder
+              minBet: "", // Placeholder
+              maxBet: "", // Placeholder
+              type: "", // Placeholder
+              timeLeft: getTimeLeft(rawMarket.endTime),
+              status,
+            };
+
+            return (
+              <div key={rawMarket.id} className="animate-fadeInUp" style={{ animationDelay: `${0.6 + index * 0.1}s` }}>
+                <MarketCard market={transformedMarket} onPredict={handlePredictMarket} />
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Empty State */}
+        {filteredMarkets.length === 0 && (
+          <div className="text-center py-12 animate-fadeInUp">
+            <Target className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+            <h3 className="text-xl font-medium text-white mb-2">No markets found</h3>
+            <p className="text-gray-400">Try adjusting your search or filter criteria</p>
+          </div>
+        )}
       </div>
 
       {/* AI Assistant Panel */}
-      <AIAssistantPanel
-        isVisible={showAIAssistant}
-        onClose={() => setShowAIAssistant(false)}
-        onCreateMarket={handleCreateMarket}
-      />
+      <AIAssistantPanel isVisible={showAIAssistant} onClose={() => setShowAIAssistant(false)} />
     </div>
   );
 }

@@ -1,9 +1,16 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Send, BarChart3, DollarSign, Globe, MessageCircle, Circle, CheckCircle, Edit3 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
+import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { convertAmountFromHumanReadableToOnChain } from "@/utils/helpers";
+import { aptosClient } from "@/utils/aptosClient";
+import { useQueryClient } from "@tanstack/react-query";
+import { createMarket } from "@/app/entry-functions/stake";
+import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
+import { WalletSelector } from "./WalletSelector";
 
 interface Message {
   role: "user" | "ai";
@@ -34,12 +41,20 @@ const CreateMarket = () => {
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [progress, setProgress] = useState<string>("");
   const [marketProposal, setMarketProposal] = useState<any>("");
+  const [initialLiquidity, setInitialLiquidity] = useState<number>(0);
+  const [error, setError] = useState("");
 
   // New states for suggestions
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState<Suggestion | null>(null);
   const [editingMarket, setEditingMarket] = useState(false);
+  const queryClient = useQueryClient();
+  const coinType = "0x69091fbab5f7d635ee7ac5098cf0c1efbe31d68fec0f2cd565e8d168daf52832::usdc::USDC";
+
+  const USDC_ASSET_ADDRESS: string = "0x69091fbab5f7d635ee7ac5098cf0c1efbe31d68fec0f2cd565e8d168daf52832";
+
+  const USDC_DECIMALS = 6; // USDC has 6 decimals
 
   const userId = "steel"; // You can make this dynamic
 
@@ -66,6 +81,102 @@ const CreateMarket = () => {
     return message;
   };
 
+  const config = new AptosConfig({ network: Network.TESTNET });
+  const aptos = new Aptos(config);
+
+  const useUSDCBalance = () => {
+    const { account } = useWallet();
+    const [balance, setBalance] = useState<number>(0);
+    const [loading, setLoading] = useState(false);
+
+    const fetchBalance = async () => {
+      if (!account?.address) {
+        setBalance(0);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const balances = await aptos.getCurrentFungibleAssetBalances({
+          options: {
+            where: {
+              owner_address: { _eq: account.address.toString() },
+            },
+          },
+        });
+
+        console.log("balances:", balances);
+
+        // filter for USDC
+        const usdcBalance = balances.find((b: any) => b.asset_type.toLowerCase() === USDC_ASSET_ADDRESS.toLowerCase());
+
+        // Convert raw amount (6 decimals)
+        const formatted = usdcBalance ? Number(usdcBalance.amount) / 1e6 : 0;
+
+        setBalance(formatted);
+      } catch (error) {
+        console.error("Error fetching USDC balance:", error);
+        setBalance(0);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    useEffect(() => {
+      fetchBalance();
+    }, [account?.address]);
+
+    return { balance, loading, refetch: fetchBalance };
+  };
+
+  const getTestnetUSDC = async (account: { address: any }) => {
+    try {
+      // This would depend on how the testnet USDC is distributed
+      // You might need to call a faucet function or mint function
+      const response = await fetch("https://fullnode.testnet.aptoslabs.com/v1/view", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          function: "0x1::primary_fungible_store::ensure_primary_store_exists",
+          type_arguments: [],
+          arguments: [account.address, USDC_ASSET_ADDRESS],
+        }),
+      });
+
+      console.log("Ensure store exists response:", await response.text());
+    } catch (error) {
+      console.error("Error ensuring store exists:", error);
+    }
+  };
+
+  const { balance } = useUSDCBalance();
+  console.log("balance", balance);
+  const handleLiquidityChange = (e: { target: { value: any } }) => {
+    const value = e.target.value;
+    setInitialLiquidity(value);
+
+    if (value && parseFloat(value) < 2) {
+      setError("Min 2 USDC");
+    } else if (value && parseFloat(value) > balance) {
+      setError("Insufficient USDC balance");
+    } else {
+      setError("");
+    }
+  };
+
+  const handleMaxClick = () => {
+    const maxAmount = Math.max(balance, 2);
+    setInitialLiquidity(maxAmount);
+    setError("");
+  };
+
+  const formatBalance = (bal: number) => {
+    if (loading) return "Loading...";
+    return `Bal:${bal.toFixed(2)} USDC`;
+  };
+
   const handleSelectSuggestion = async (index: number) => {
     // Create a temporary session ID if one doesn't exist
     let currentSessionId = sessionId;
@@ -73,19 +184,18 @@ const CreateMarket = () => {
       currentSessionId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       setSessionId(currentSessionId);
     }
-  
-    setLoading(true);
-  
-    try {
 
+    setLoading(true);
+
+    try {
       setSelectedSuggestion(suggestions[index]);
       setShowSuggestions(false);
       setEditingMarket(true);
-  
+
       // Update progress
       setCurrentStep(2);
       setProgress("Editing Market Proposal");
-  
+
       // Add a message about the selection
       setMessages((prev) => [
         ...prev,
@@ -95,11 +205,9 @@ const CreateMarket = () => {
         },
       ]);
 
-        // Use the selected suggestion as the market proposal
-        setMarketProposal(suggestions[index]);
- 
+      // Use the selected suggestion as the market proposal
+      setMarketProposal(suggestions[index]);
     } catch (err) {
-  
       setMessages((prev) => [
         ...prev,
         {
@@ -112,19 +220,67 @@ const CreateMarket = () => {
     }
   };
 
-  const handleCreateMarket = async () => {
-    if (!selectedSuggestion && !marketProposal) return;
+  const { signAndSubmitTransaction, account } = useWallet();
 
-    setLoading(true);
+  const onStakeClick = async () => {
+    if (!account) return;
+
+    console.log("marketProposal", marketProposal);
+
+    // Extract market details
+    const title = marketProposal.title;
+    const description = marketProposal.question;
+    const resolution_criteria =
+      marketProposal.resolution_criteria ||
+      "This market will be resolved based on official sources and verifiable information at the specified end time.";
+    const endTime = marketProposal.end_date;
+    const oracle = "0x8c07310ed7334fb67d661843fa50c9311601880e6312cb00f68c5a71d125d104";
+
+    // Parse the date string and convert to Unix timestamp
+    const [day, month, year] = endTime.split("/");
+    const endDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    const formattedEndTime = Math.floor(endDate.getTime() / 1000);
+
+    // Validate end time is in the future
+    const currentTime = Math.floor(Date.now() / 1000);
+    if (formattedEndTime <= currentTime) {
+      setMessages((prev) => [
+        {
+          role: "ai",
+          content:
+            "😅 The market end time needs to be sometime in the future—can't close a bet that's already over, right? Try picking a later date.",
+        },
+        ...prev,
+      ]);
+      return;
+    }
 
     try {
-      // You might want to call a different endpoint to actually create the market
-      // For now, we'll simulate success
+      const response = await signAndSubmitTransaction(
+        createMarket({
+          title,
+          description,
+          resolution_criteria,
+          endTime: formattedEndTime,
+          oracle,
+          initialLiquidity: convertAmountFromHumanReadableToOnChain(initialLiquidity, USDC_DECIMALS), // 2 USDC initial liquidity
+          coinType,
+        }),
+      );
+
+      // Wait for the transaction
+      await aptosClient().waitForTransaction({
+        transactionHash: response.hash,
+      });
+
+      queryClient.refetchQueries();
+      console.log("Market creation response:", response);
+
       setMessages((prev) => [
         ...prev,
         {
           role: "ai",
-          content: "🎉 Market created successfully! It's now live for trading.",
+          content: `🎉 Market "${title}" created successfully! It's now live for trading.`,
         },
       ]);
 
@@ -136,6 +292,35 @@ const CreateMarket = () => {
 
       // Reset input for next market
       setInput("");
+    } catch (error: any) {
+      console.error("Error creating market:", error);
+
+      // Better error handling
+      let errorMessage = "❌ Failed to create market. Please try again.";
+
+      if (error.message?.includes("E_INVALID_END_TIME")) {
+        errorMessage = "❌ Invalid end time. Market must run for at least 1 hour.";
+      } else if (error.message?.includes("E_INVALID_BET_AMOUNT")) {
+        errorMessage = "❌ Insufficient initial liquidity. Please increase the amount.";
+      } else if (error.message?.includes("insufficient balance")) {
+        errorMessage = "❌ Insufficient USDC balance to create market.";
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          content: errorMessage,
+        },
+      ]);
+    }
+  };
+  const handleCreateMarket = async () => {
+    if (!selectedSuggestion && !marketProposal) return;
+
+    setLoading(true);
+
+    try {
     } catch (err) {
       console.error("Create market error:", err);
       setMessages((prev) => [...prev, { role: "ai", content: "⚠️ Failed to create market. Please try again." }]);
@@ -151,15 +336,15 @@ const CreateMarket = () => {
 
   const handleSend = async () => {
     if (!input.trim()) return;
-  
+
     const newMessage: Message = { role: "user", content: input };
     setMessages((prev) => [...prev, newMessage]);
     setInput("");
     setLoading(true);
-  
+
     try {
       let response;
-  
+
       if (!sessionId) {
         // First message -> start market creation
         response = await fetch("http://localhost:8000/api/market/search-suggestions", {
@@ -175,16 +360,16 @@ const CreateMarket = () => {
           body: JSON.stringify({ session_id: sessionId, response: input }),
         });
       }
-  
+
       const data = await response.json();
       console.log("Server response:", data);
-  
+
       if (data.success !== false && response.ok) {
         // IMPORTANT: Set session ID immediately from search-suggestions response
         if (data.session_id && !sessionId) {
           setSessionId(data.session_id);
         }
-  
+
         // Handle suggestions from search-suggestions endpoint
         if (data.prediction_markets && data.prediction_markets.length > 0) {
           // Format the prediction_markets as suggestions
@@ -200,50 +385,50 @@ const CreateMarket = () => {
             resolution_criteria: market.resolution_criteria,
             sentiment_score: market.sentiment_score,
             sources: market.sources || [],
-            title: market.title
+            title: market.title,
           }));
-  
+
           setSuggestions(formattedSuggestions);
           setShowSuggestions(true);
-  
+
           // Update progress
           setCurrentStep(1);
           setProgress("Select Market Suggestion");
-  
+
           // Add a helpful message about the suggestions
           const suggestionMessage = `I found these predictions based on your query "${data.query || input}". Please select one to customize, or create a custom market.`;
-          
+
           setMessages((prev) => [...prev, { role: "ai", content: suggestionMessage }]);
         }
         // Handle regular suggestions (from continue endpoint)
         else if (data.suggestions && data.suggestions.length > 0) {
           setSuggestions(data.suggestions);
           setShowSuggestions(true);
-  
+
           // Update progress
           setCurrentStep(1);
           setProgress("Select Market Suggestion");
-  
+
           // Add the message from the API
           if (data.message) {
             setMessages((prev) => [...prev, { role: "ai", content: data.message }]);
           }
-        } 
+        }
         // Handle AI suggestions for refinement
         else if (data.ai_suggestion) {
           let reply = data.ai_suggestion;
-  
+
           if (reply.includes("Everything looks good")) {
             reply = "confirm";
           }
-  
+
           setSuggestedReply(reply);
         }
-  
+
         if (data.proposal) {
           setMarketProposal(data.proposal);
         }
-  
+
         // Update progress state
         if (data.current_step) {
           setCurrentStep(data.current_step);
@@ -251,7 +436,7 @@ const CreateMarket = () => {
         if (data.progress) {
           setProgress(data.progress);
         }
-  
+
         // Format and display the AI response (for other types of responses)
         if (data.prompt && !data.prediction_markets) {
           const aiMessage = formatAIResponse(data);
@@ -274,7 +459,7 @@ const CreateMarket = () => {
       setLoading(false);
     }
   };
-  
+
   const handleSuggestedQuestion = (question: string) => {
     setInput(question);
   };
@@ -290,20 +475,20 @@ const CreateMarket = () => {
 
   const parseDate = (dateStr: string): string => {
     if (!dateStr) return "";
-    
+
     // Handle DD/MM/YYYY format
     if (dateStr.includes("/")) {
       const [day, month, year] = dateStr.split("/");
       return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
     }
-    
+
     // If already in YYYY-MM-DD format, return as is
     return dateStr;
   };
-  
+
   const formatDateForDisplay = (dateStr: string): string => {
     if (!dateStr) return "Invalid Date";
-    
+
     try {
       // Handle DD/MM/YYYY format
       if (dateStr.includes("/")) {
@@ -311,7 +496,7 @@ const CreateMarket = () => {
         const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
         return date.toLocaleDateString();
       }
-      
+
       // Handle YYYY-MM-DD format
       const date = new Date(dateStr);
       return date.toLocaleDateString();
@@ -319,35 +504,32 @@ const CreateMarket = () => {
       return "Invalid Date";
     }
   };
-  
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-      <header className="border-b border-gray-700/50 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="hover: cursor-pointer flex items-center gap-4" onClick={() => router.push("/")}>
-              <h1 className="text-2xl font-bold text-white">
-                Pivot<span className="text-cyan-400">Markets</span>
-              </h1>
-              <div className="flex items-center gap-1 text-xs text-gray-400">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                Beta v0.2
-              </div>
-            </div>
 
-            {/* Progress Bar */}
-            {currentStep > 0 && (
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-400">{progress}</span>
-                <div className="w-32 h-2 bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500 ease-out"
-                    style={{ width: `${Math.min((currentStep / 4) * 100, 100)}%` }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900/80 via-gray-800 to-gray-900">
+      <header className="sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="flex justify-between items-center px-4 py-2">
+  {/* Logo Section */}
+  <div
+    className="cursor-pointer flex flex-col"
+    onClick={() => router.push("/")}
+  >
+    <h1 className="text-2xl font-bold text-white">
+      Pivot<span className="text-cyan-400">Markets</span>
+    </h1>
+    <div className="flex items-center gap-1 text-xs text-gray-400">
+      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+      Beta v0.2
+    </div>
+  </div>
+
+  {/* Wallet Connect Section */}
+  <div className="flex gap-2 items-center flex-wrap">
+    <WalletSelector />
+  </div>
+</div>
+
         </div>
       </header>
 
@@ -520,7 +702,6 @@ const CreateMarket = () => {
                   <motion.div
                     key={index}
                     className="bg-gray-800/80 backdrop-blur-sm border border-gray-700/60 rounded-xl p-6 hover:border-cyan-500/50 transition-all duration-300"
-                
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3, delay: index * 0.1 }}
@@ -579,9 +760,7 @@ const CreateMarket = () => {
                       </div>
                     )}
 
-                    <div className="text-xs text-gray-500 italic ">
-                      {suggestion.context}
-                    </div>
+                    <div className="text-xs text-gray-500 italic ">{suggestion.context}</div>
                   </motion.div>
                 ))}
               </div>
@@ -663,6 +842,55 @@ const CreateMarket = () => {
                       className="w-full bg-gray-700/50 border border-gray-600/50 rounded-lg p-3 text-gray-200 text-sm"
                     />
                   </div>
+
+                  {/* New USDC Bet Amount Input */}
+                  <div>
+                    <h4 className="text-sm font-semibold text-cyan-400 mb-1">
+                      Initial Liquidity (USDC)
+                      <span className="text-red-400 ml-1">*</span>
+                    </h4>
+
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="2"
+                        step="0.01"
+                        value={initialLiquidity}
+                        onChange={handleLiquidityChange}
+                        placeholder={`0`}
+                        className={`
+            w-full bg-gray-700/50 border ${
+              error ? "border-red-500" : "border-gray-600/50"
+            } rounded-lg p-3 text-gray-200 text-sm pr-16
+            [appearance:textfield] 
+            [&::-webkit-outer-spin-button]:appearance-none 
+            [&::-webkit-inner-spin-button]:appearance-none
+            focus:outline-none focus:border-cyan-400
+          `}
+                        required
+                      />
+
+                      <button
+                        type="button"
+                        onClick={handleMaxClick}
+                        disabled={loading || balance === 0}
+                        className={`
+            absolute right-3 top-1/2 transform -translate-y-1/2 
+            px-2 py-1 text-xs font-semibold rounded
+            transition-colors duration-200
+            ${
+              loading || balance === 0
+                ? "text-gray-500 cursor-not-allowed"
+                : "text-green-400 hover:text-green-300 hover:bg-green-400/10 cursor-pointer"
+            }
+          `}
+                      >
+                        MAX
+                      </button>
+                    </div>
+
+                    {error && <p className="text-red-400 text-xs mt-1 flex items-center">{error}</p>}
+                  </div>
                 </div>
 
                 {/* AI Analysis */}
@@ -712,11 +940,10 @@ const CreateMarket = () => {
                       </ul>
 
                       <div>
-                      <h5 className="text-xs mt-4 font-semibold text-cyan-400 mb-1">Context</h5>
-                      <div className="text-xs text-gray-500 italic ">{marketProposal.context}</div>
+                        <h5 className="text-xs mt-4 font-semibold text-cyan-400 mb-1">Context</h5>
+                        <div className="text-xs text-gray-500 italic ">{marketProposal.context}</div>
+                      </div>
                     </div>
-                    </div>
-                    
                   )}
                 </div>
               </div>
@@ -735,11 +962,12 @@ const CreateMarket = () => {
               {/* Action Buttons */}
               <div className="flex gap-3 mt-6 flex-wrap">
                 <button
-                  onClick={handleCreateMarket}
+                  onClick={onStakeClick}
                   disabled={loading}
                   className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
                 >
-                  <CheckCircle className="w-4 h-4" />✅ Create Market
+                  <CheckCircle className="w-4 h-4" />
+                  Create Market & Bet
                 </button>
                 <button
                   onClick={() => {
