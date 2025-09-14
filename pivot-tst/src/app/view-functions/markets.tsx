@@ -41,8 +41,8 @@ export interface MarketSummary {
   id: string;
   title: string;
   description: string;
-  endTime: string; // epoch time string
-  yesPrice: string; // stringified integer like "5000"
+  endTime: string;
+  yesPrice: string; 
   noPrice: string;
   participantCount: string;
   totalValueLocked: string;
