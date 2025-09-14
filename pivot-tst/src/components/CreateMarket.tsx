@@ -11,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createMarket } from "@/app/entry-functions/stake";
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 import { WalletSelector } from "./WalletSelector";
+import { PredictionMarketsAPI } from "../app/serve";
 
 interface Message {
   role: "user" | "ai";
@@ -43,7 +44,7 @@ const CreateMarket = () => {
   const [marketProposal, setMarketProposal] = useState<any>("");
   const [initialLiquidity, setInitialLiquidity] = useState<number>(0);
   const [error, setError] = useState("");
-
+  const [suggestedQuestions, setSuggestedQuestions] = useState<any>(null);
   // New states for suggestions
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -65,12 +66,6 @@ const CreateMarket = () => {
     }
   };
 
-  const suggestedQuestions = [
-    "What are the best performing small cap assets today?",
-    "Which are the top 3 tokens to watch based on sentiment recently?",
-    "How will Trump's tariffs affect the price of cryptocurrency assets?",
-  ];
-
   const formatAIResponse = (data: any) => {
     let message = "";
 
@@ -83,6 +78,58 @@ const CreateMarket = () => {
 
   const config = new AptosConfig({ network: Network.TESTNET });
   const aptos = new Aptos(config);
+
+  const predictionAPI = new PredictionMarketsAPI("http://localhost:8000");
+
+  async function getTrendingNewsForMarkets() {
+    try {
+      // Get trending news from specific categories
+      const newsResponse = await predictionAPI.getTrendingNews(["crypto", "politics", "technology"], 8);
+
+      console.log("Trending news retrieved:", newsResponse);
+
+      // Process news items and create markets from them
+      const marketPromises = newsResponse.trending_news
+        .filter((news) => news.market_potential > 0.6) // Only high-potential news
+        .slice(0, 3) // Limit to top 3
+        .map(async (news) => {
+          // Use the first suggested question as a market query
+          const query = news.suggested_market_questions[0];
+          return await predictionAPI.generatePredictionMarkets(query, 2);
+        });
+
+      const allMarkets = await Promise.all(marketPromises);
+      console.log("Markets generated from news:", allMarkets);
+
+      return { news: newsResponse, markets: allMarkets };
+    } catch (error) {
+      console.error("Failed to get trending news:", error);
+      throw error;
+    }
+  }
+
+  useEffect(() => {
+    const fetchSuggested = async () => {
+      try {
+        const result = await getTrendingNewsForMarkets();
+
+        // Extract questions from the trending news
+        const allQuestions = result.news.trending_news
+          .filter((newsItem: any) => newsItem.market_potential > 0.6)
+          .flatMap((newsItem: any) => newsItem.suggested_market_questions)
+          .slice(0, 3); // Limit to 3 questions
+
+        setSuggestedQuestions(allQuestions);
+      } catch (err: any) {
+        console.error("Error fetching suggested markets:", err);
+        setError("Failed to load suggested markets.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSuggested();
+  }, []);
 
   const useUSDCBalance = () => {
     const { account } = useWallet();
@@ -152,7 +199,7 @@ const CreateMarket = () => {
   };
 
   const { balance } = useUSDCBalance();
-  console.log("balance", balance);
+
   const handleLiquidityChange = (e: { target: { value: any } }) => {
     const value = e.target.value;
     setInitialLiquidity(value);
@@ -490,15 +537,18 @@ const CreateMarket = () => {
     if (!dateStr) return "Invalid Date";
 
     try {
+      // Remove time if present
+      const [datePart] = dateStr.split(" ");
+
       // Handle DD/MM/YYYY format
-      if (dateStr.includes("/")) {
-        const [day, month, year] = dateStr.split("/");
+      if (datePart.includes("/")) {
+        const [day, month, year] = datePart.split("/");
         const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
         return date.toLocaleDateString();
       }
 
       // Handle YYYY-MM-DD format
-      const date = new Date(dateStr);
+      const date = new Date(datePart);
       return date.toLocaleDateString();
     } catch (error) {
       return "Invalid Date";
@@ -509,27 +559,23 @@ const CreateMarket = () => {
     <div className="min-h-screen bg-gradient-to-br from-gray-900/80 via-gray-800 to-gray-900">
       <header className="sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 py-4">
-        <div className="flex justify-between items-center px-4 py-2">
-  {/* Logo Section */}
-  <div
-    className="cursor-pointer flex flex-col"
-    onClick={() => router.push("/")}
-  >
-    <h1 className="text-2xl font-bold text-white">
-      Pivot<span className="text-cyan-400">Markets</span>
-    </h1>
-    <div className="flex items-center gap-1 text-xs text-gray-400">
-      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-      Beta v0.2
-    </div>
-  </div>
+          <div className="flex justify-between items-center px-4 py-2">
+            {/* Logo Section */}
+            <div className="cursor-pointer flex flex-col" onClick={() => router.push("/")}>
+              <h1 className="text-2xl font-bold text-white">
+                Pivot<span className="text-cyan-400">Markets</span>
+              </h1>
+              <div className="flex items-center gap-1 text-xs text-gray-400">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                Beta v0.2
+              </div>
+            </div>
 
-  {/* Wallet Connect Section */}
-  <div className="flex gap-2 items-center flex-wrap">
-    <WalletSelector />
-  </div>
-</div>
-
+            {/* Wallet Connect Section */}
+            <div className="flex gap-2 items-center flex-wrap">
+              <WalletSelector />
+            </div>
+          </div>
         </div>
       </header>
 
@@ -603,7 +649,7 @@ const CreateMarket = () => {
                   msOverflowStyle: "none", // IE/Edge
                 }}
               >
-                {suggestedQuestions.map((question, idx) => (
+                {suggestedQuestions?.map((question: any, idx: any) => (
                   <motion.button
                     key={idx}
                     onClick={() => handleSuggestedQuestion(question)}

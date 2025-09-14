@@ -5,12 +5,12 @@ import { Plus, MessageCircle, Search, Clock, Users, DollarSign, Sparkles, Target
 import { WalletSelector } from "../components/WalletSelector";
 import { useRouter } from "next/navigation";
 import { aptosClient } from "@/utils/aptosClient";
-import { getAllMarketIds, getAllMarketSummaries, getMarketDetails, getMarketSummary } from "./view-functions/markets";
+import { getAllMarketSummaries, getUserPositions, getUserPositionsWithDetails } from "./view-functions/markets";
 import { convertAmountFromHumanReadableToOnChain } from "@/utils/helpers";
-import { MODULE_ADDRESS } from "@/constants";
-import { InputTransactionData, useWallet } from "@aptos-labs/wallet-adapter-react";
-import { BuyPositionArguments } from "./entry-functions/buy_position";
+import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { buyPosition, sellPosition } from "./entry-functions/trade";
 import { useQueryClient } from "@tanstack/react-query";
+import MarketDetailPage from "@/components/MarketDetails";
 
 const categories = ["All markets", "Crypto", "Technology", "Climate", "Space", "Finance", "Politics"];
 const statusFilters = ["All Status", "Live", "Ended"];
@@ -31,23 +31,22 @@ function getTimeLeft(endTimeEpoch: string) {
   return `${minutes}m`;
 }
 
-/**
- * Buy a position in a market
- */
-export const buyPosition = (args: BuyPositionArguments): InputTransactionData => {
-  const { marketId, outcome, amount, maxSlippage } = args;
-
-  return {
-    data: {
-      function: `${MODULE_ADDRESS}::pivot_market_tab::buy_position`,
-      functionArguments: [marketId, outcome, amount, maxSlippage],
-    },
-  };
-};
-
 const MarketCard = ({ market, onPredict }: any) => {
   const queryClient = useQueryClient();
   const { signAndSubmitTransaction, account } = useWallet();
+  const router = useRouter();
+  
+
+  const handleMarketClick = () => {
+    // Create a URL-friendly slug from the market title
+    const slug = market.title
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .trim();
+
+    router.push(`/market/${slug}/${market.id}`);
+  };
 
   const onBuyPositionClick = async (
     marketId: number,
@@ -87,6 +86,39 @@ const MarketCard = ({ market, onPredict }: any) => {
       throw error;
     }
   };
+
+
+  const onSellPositionClick = async (
+    marketId: number,
+    positionId: number,
+    sharesToSell: number,
+    minPrice: number, // Minimum acceptable price per share
+  ) => {
+    if (!account) return;
+
+    try {
+      const response = await signAndSubmitTransaction(
+        sellPosition({
+          marketId,
+          positionId,
+          sharesToSell,
+          minPrice,
+        }),
+      );
+
+      await aptosClient().waitForTransaction({
+        transactionHash: response.hash,
+      });
+
+      queryClient.refetchQueries();
+      console.log("Sell position response:", response);
+      return response;
+    } catch (error) {
+      console.error("Error selling position:", error);
+      throw error;
+    }
+  };
+
   const getStatusColor = (status: any) => {
     switch (status) {
       case "Live":
@@ -101,7 +133,7 @@ const MarketCard = ({ market, onPredict }: any) => {
   return (
     <div
       className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-6  hover:shadow-lg transition-all duration-300 cursor-pointer group animate-fadeInUp"
-      onClick={() => onPredict(market)}
+      onClick={handleMarketClick}
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
@@ -165,51 +197,17 @@ const MarketCard = ({ market, onPredict }: any) => {
             try {
               const marketId = market.id;
               const amountUSDC = 2;
-              const outcome = "NO";
-
-              // Get current market state to calculate proper prices
-              const totalShares = (market.yesShares || 0) + (market.noShares || 0);
-
-              // Calculate current price based on market state
-              let currentPrice;
-              if (totalShares === 0) {
-                currentPrice = 5000; // 50% default price when no shares exist
-              } else {
-                if (outcome === "YES") {
-                  currentPrice = Math.floor((market.yesShares * 10000) / totalShares);
-                } else {
-                  currentPrice = Math.floor((market.noShares * 10000) / totalShares);
-                }
-              }
-
-              // Prevent division by zero and handle edge cases
-              if (currentPrice <= 0) {
-                currentPrice = 100; // Minimum price of 1% (100 basis points)
-              }
-              if (currentPrice >= 10000) {
-                currentPrice = 9900; // Maximum price of 99% (9900 basis points)
-              }
-
-              console.log("Current price for", outcome, ":", currentPrice);
-
-              // Calculate shares to be purchased
+              const currentPrice = market.noPrice * 10000; // e.g., 0.5 * 10000 = 5000
               const shares = Math.floor((amountUSDC * 10000) / currentPrice);
+              const totalShares = (market.yesShares || 0) + (market.noShares || 0) + shares; // Fetch shares via view fn
+              const newPrice = Math.floor((((market.noShares || 0) + shares) * 10000) / totalShares);
+              const impact = Math.abs(newPrice - currentPrice);
+              const suggestedSlippage = impact + 50;
 
-              // Estimate price impact
-              const newTotalShares = totalShares + shares;
-              const newOutcomeShares =
-                outcome === "YES" ? (market.yesShares || 0) + shares : (market.noShares || 0) + shares;
-
-              const newPrice =
-                newTotalShares > 0 ? Math.floor((newOutcomeShares * 10000) / newTotalShares) : currentPrice;
-
-              const priceImpact = Math.abs(newPrice - currentPrice);
-              const suggestedSlippage = Math.max(priceImpact + 50, 100); // At least 1% slippage
-
-              console.log("Price impact:", priceImpact, "Suggested slippage:", suggestedSlippage);
-
+              const maxSlippagePercent = suggestedSlippage; // 1% slippage tolerance
+              console.log("maxSlippagePercent", maxSlippagePercent, impact, newPrice, totalShares);
               // Use reasonable slippage (not percentage, but basis points directly)
-              await onBuyPositionClick(marketId, outcome, amountUSDC, suggestedSlippage);
+              await onBuyPositionClick(marketId, "NO", amountUSDC, maxSlippagePercent);
             } catch (error) {
               console.error("Error buying NO position:", error);
             }
@@ -240,6 +238,19 @@ const MarketCard = ({ market, onPredict }: any) => {
           {market.timeLeft}
         </span>
       </div>
+      {/* <button
+        onClick={() =>
+          onSellPositionClick(
+            0, // marketId
+            2, // positionId
+            2000000, // 2 USDC worth of shares
+            3200, // minPrice (0.32 USDC per share, slightly above current price)
+          )
+        }
+        className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg"
+      >
+        Sell
+      </button> */}
     </div>
   );
 };
@@ -255,7 +266,7 @@ const AIAssistantPanel = ({ isVisible, onClose }: any) => {
           <h3 className="text-white font-medium">AI Market Assistant</h3>
         </div>
         <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors text-xl">
-          ×
+          X
         </button>
       </div>
 
@@ -293,13 +304,19 @@ export default function PivotMarketApp() {
   const [sortBy, setSortBy] = useState("Latest");
   const [searchQuery, setSearchQuery] = useState("");
   const [showAIAssistant, setShowAIAssistant] = useState(false);
+  const [selectedMarket, setSelectedMarket] = useState<any>(null);
+
+  const { account } = useWallet();
 
   // Get market details
   useEffect(() => {
     const fetchMarkets = async () => {
       try {
         const marketData = await getAllMarketSummaries();
+        const userPositions = await getUserPositions(0, account?.address.toString() as any);
         console.log("markets--", marketData);
+        console.log("userPositions--", userPositions, account?.address.toString());
+
         setMarkets(marketData);
       } catch (error) {
         console.error("Failed to fetch markets:", error);
@@ -307,7 +324,7 @@ export default function PivotMarketApp() {
     };
 
     fetchMarkets();
-  }, []);
+  }, [account?.address]);
 
   // Filter and sort markets
   useEffect(() => {
@@ -350,11 +367,13 @@ export default function PivotMarketApp() {
   }, [markets, searchQuery, selectedCategory, selectedStatus, sortBy]);
 
   const handlePredictMarket = (market: any) => {
-    console.log("Predicting on market:", market);
-    // Handle market prediction logic
+    setSelectedMarket(market);
   };
 
-  // Example usage function similar to your onStakeClick
+  // If a market is selected, show the detail page
+  if (selectedMarket) {
+    return <MarketDetailPage market={selectedMarket} />;
+  }
 
   const totalMarkets = filteredMarkets.length;
   const router = useRouter();
@@ -408,7 +427,7 @@ export default function PivotMarketApp() {
       `}</style>
 
       {/* Header */}
-      <header className="border-b border-gray-700/50 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-40 animate-fadeInUp">
+      <header className=" bg-gray-900/80  sticky top-0 z-40 animate-fadeInUp">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">

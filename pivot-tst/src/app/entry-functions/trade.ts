@@ -8,6 +8,14 @@ export type BuyPositionArguments = {
   maxSlippage: number; // Maximum slippage in basis points (e.g., 100 = 1%)
 };
 
+interface SellPositionArguments {
+  marketId: number;
+  positionId: number;
+  sharesToSell: number;
+  minPrice: number; 
+}
+
+
 /**
  * Buy a position in a market
  */
@@ -18,6 +26,25 @@ export const buyPosition = (args: BuyPositionArguments): InputTransactionData =>
     data: {
       function: `${MODULE_ADDRESS}::pivot_market_tab::buy_position`,
       functionArguments: [marketId, outcome, amount, maxSlippage],
+    },
+  };
+};
+
+/**
+ * sell a position in a market
+ */
+export const sellPosition = (args: SellPositionArguments): InputTransactionData => {
+  const { marketId, positionId, sharesToSell, minPrice } = args;
+
+  return {
+    data: {
+      function: `${MODULE_ADDRESS}::pivot_market_tab::sell_position`,
+      functionArguments: [
+        marketId,
+        positionId,
+        sharesToSell,
+        minPrice,
+      ],
     },
   };
 };

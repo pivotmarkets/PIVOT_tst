@@ -37,6 +37,16 @@ class MarketSuggestion:
     sentiment_score: float
     key_factors: List[str]
 
+@dataclass
+class NewsItem:
+    title: str
+    summary: str
+    category: str
+    impact_level: str
+    market_potential: float
+    suggested_market_questions: List[str]
+    timestamp: str
+
 class AIMarketAssistant:
     """AI assistant for natural language market creation"""
     
@@ -50,19 +60,24 @@ class AIMarketAssistant:
                 logger.error(f"Failed to initialize Gemini client: {e}")
                 self.gemini_client = None
     
-    def generate_prediction_markets_sync(self, query: str, num_suggestions: int = 6) -> List[MarketSuggestion]:  # Changed default to 6
-        """Synchronous version of generate_prediction_markets"""
+    def generate_prediction_markets_sync(self, query: str, num_suggestions: int = 6) -> List[MarketSuggestion]:
+        """Synchronous version of generate_prediction_markets with time constraint"""
         if not self.gemini_client:
             return self._fallback_suggestions(query)
         
         try:
-            current_date = datetime.now().strftime('%Y-%m-%d')
+            current_date = datetime.now().strftime('%Y-%m-%d %H:%M')
+            # Minimum end time is 1 hour from now
+            min_end_time = datetime.now() + timedelta(hours=1)
+            min_end_date = min_end_time.strftime('%d/%m/%Y %H:%M')
+            
             prompt = f"""
 Based on the query: "{query}"
-Current date: {current_date}
+Current date and time: {current_date}
+IMPORTANT: All markets must end at least 1 hour from the current time. Minimum end time: {min_end_date}
 
 Generate {num_suggestions} relevant yes/no prediction market suggestions related to this query.
-Each market should be specific, measurable, and have a clear resolution timeframe.
+Each market should be specific, measurable, and have a clear resolution timeframe that is AT LEAST 1 HOUR in the future.
 
 For each suggestion, provide:
 - title: Concise, engaging title for the market
@@ -71,13 +86,14 @@ For each suggestion, provide:
 - context: 2-3 sentences of background context
 - resolution_criteria: Detailed criteria for how the market will be resolved, including specific sources
 - sources: List of 2-3 reliable source URLs or types (e.g., "Official company announcements", "CoinMarketCap")
-- end_date: Future date in DD/MM/YYYY format (1-6 months from now)
+- end_date: Future date in DD/MM/YYYY HH:MM format (minimum 1 hour from now, typically 1-6 months from now)
 - category: Appropriate category (cryptocurrency, stocks, politics, technology, sports, economics, general)
 - ai_probability: Estimated probability as float between 0.1-0.9 for YES outcome
 - confidence: Confidence in the estimate as float between 0.3-0.8
 - sentiment_score: Market sentiment as float between 0-1 (0.5 = neutral)
 - key_factors: List of 3-4 key factors that could influence the outcome
 
+CRITICAL: Ensure ALL end_date values are at least 1 hour from the current time ({current_date}).
 Make the markets interesting, specific, and verifiable. Focus on events that will have clear outcomes.
 
 Return as valid JSON array of objects with exactly these keys.
@@ -102,15 +118,140 @@ Return as valid JSON array of objects with exactly these keys.
             content = content.strip()
             
             suggestions_data = json.loads(content)
-            return [MarketSuggestion(**data) for data in suggestions_data]
+            suggestions = [MarketSuggestion(**data) for data in suggestions_data]
+            
+            # Validate that all markets are at least 1 hour in the future
+            validated_suggestions = self._validate_market_times(suggestions)
+            
+            return validated_suggestions
             
         except Exception as e:
             logger.error(f"Gemini generation failed: {e}")
             return self._fallback_suggestions(query)
     
+    def _validate_market_times(self, suggestions: List[MarketSuggestion]) -> List[MarketSuggestion]:
+        """Ensure all markets end at least 1 hour from now"""
+        current_time = datetime.now()
+        min_end_time = current_time + timedelta(hours=1)
+        validated = []
+        
+        for suggestion in suggestions:
+            try:
+                # Try to parse the end_date
+                if ' ' in suggestion.end_date:
+                    # Format: DD/MM/YYYY HH:MM
+                    end_datetime = datetime.strptime(suggestion.end_date, '%d/%m/%Y %H:%M')
+                else:
+                    # Format: DD/MM/YYYY - assume end of day
+                    end_datetime = datetime.strptime(suggestion.end_date, '%d/%m/%Y')
+                    end_datetime = end_datetime.replace(hour=23, minute=59)
+                
+                if end_datetime >= min_end_time:
+                    validated.append(suggestion)
+                else:
+                    # Fix the end_date to be at least 1 hour from now
+                    new_end_time = min_end_time + timedelta(days=30)  # Default to 30 days from minimum
+                    suggestion.end_date = new_end_time.strftime('%d/%m/%Y %H:%M')
+                    validated.append(suggestion)
+                    
+            except ValueError:
+                # If parsing fails, set a default future date
+                default_end_time = min_end_time + timedelta(days=30)
+                suggestion.end_date = default_end_time.strftime('%d/%m/%Y %H:%M')
+                validated.append(suggestion)
+        
+        return validated
+    
+    def get_trending_news_sync(self, categories: List[str] = None, limit: int = 10) -> List[NewsItem]:
+        """Get trending news from various categories"""
+        if not self.gemini_client:
+            return self._fallback_news()
+        
+        if categories is None:
+            categories = ["politics", "sports", "crypto", "technology", "economics", "general"]
+        
+        try:
+            current_date = datetime.now().strftime('%Y-%m-%d')
+            categories_str = ", ".join(categories)
+            
+            prompt = f"""
+Generate {limit} trending news items for today ({current_date}) across these categories: {categories_str}.
+
+For each news item, provide realistic and current trending topics that would be relevant for prediction markets.
+
+For each item, provide:
+- title: Engaging news headline
+- summary: 2-3 sentence summary of the news
+- category: One of: politics, sports, crypto, technology, economics, general
+- impact_level: high, medium, or low
+- market_potential: Float between 0.1-1.0 indicating how good this would be for a prediction market
+- suggested_market_questions: List of 2-3 yes/no questions that could become prediction markets based on this news
+- timestamp: Current timestamp in YYYY-MM-DD HH:MM format
+
+Focus on recent developments, upcoming events, market movements, political developments, sports events, tech announcements, and economic indicators that people would want to bet on.
+
+Return as valid JSON array of objects with exactly these keys.
+"""
+            
+            response = self.gemini_client.generate_content(
+                prompt,
+                generation_config={
+                    "temperature": 0.8,
+                    "max_output_tokens": 2500,
+                    "response_mime_type": "application/json"
+                }
+            )
+            
+            content = response.text
+            # Clean up the response
+            content = content.strip()
+            if content.startswith('```json'):
+                content = content[7:]
+            if content.endswith('```'):
+                content = content[:-3]
+            content = content.strip()
+            
+            news_data = json.loads(content)
+            return [NewsItem(**data) for data in news_data]
+            
+        except Exception as e:
+            logger.error(f"News generation failed: {e}")
+            return self._fallback_news()
+    
+    def _fallback_news(self) -> List[NewsItem]:
+        """Fallback news when Gemini fails"""
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M')
+        return [
+            NewsItem(
+                title="Market Analysis: Tech Sector Outlook",
+                summary="Technology stocks showing mixed signals amid regulatory concerns and AI developments.",
+                category="technology",
+                impact_level="medium",
+                market_potential=0.7,
+                suggested_market_questions=[
+                    "Will tech stocks outperform the S&P 500 this quarter?",
+                    "Will AI regulation be passed in the US by end of 2025?"
+                ],
+                timestamp=current_time
+            ),
+            NewsItem(
+                title="Cryptocurrency Market Volatility",
+                summary="Major cryptocurrencies experiencing significant price movements following regulatory announcements.",
+                category="crypto",
+                impact_level="high",
+                market_potential=0.9,
+                suggested_market_questions=[
+                    "Will Bitcoin reach $150,000 by end of 2025?",
+                    "Will Ethereum complete its next major upgrade by Q2 2025?"
+                ],
+                timestamp=current_time
+            )
+        ]
+    
     def _fallback_suggestions(self, query: str) -> List[MarketSuggestion]:
-        """Fallback suggestions when Gemini fails"""
-        end_date = (datetime.now() + timedelta(days=60)).strftime('%d/%m/%Y')
+        """Fallback suggestions when Gemini fails - with proper time constraint"""
+        min_end_time = datetime.now() + timedelta(hours=1, days=60)
+        end_date = min_end_time.strftime('%d/%m/%Y %H:%M')
         
         suggestion = MarketSuggestion(
             title=f"Prediction market: {query}",
@@ -147,7 +288,7 @@ class SimplifiedPredictionAPI:
             try:
                 data = request.json
                 query = data.get('query', '')
-                num_suggestions = data.get('num_suggestions', 20)  # Changed default to 6
+                num_suggestions = data.get('num_suggestions', 6)
                 
                 if not query:
                     return jsonify({
@@ -163,10 +304,11 @@ class SimplifiedPredictionAPI:
                 
                 return jsonify({
                     'success': True,
-                    'session_id': session_id,  # Added session ID
+                    'session_id': session_id,
                     'query': query,
                     'prediction_markets': [asdict(s) for s in suggestions],
-                    'count': len(suggestions)
+                    'count': len(suggestions),
+                    'note': 'All markets end at least 1 hour from current time'
                 })
                 
             except Exception as e:
@@ -176,13 +318,48 @@ class SimplifiedPredictionAPI:
                     'error': f'Server error: {str(e)}'
                 }), 500
         
+        @self.app.route('/api/news/trending', methods=['GET', 'POST'])
+        def get_trending_news():
+            """New endpoint: Get trending news for prediction markets"""
+            try:
+                if request.method == 'POST':
+                    data = request.json or {}
+                    categories = data.get('categories', None)
+                    limit = data.get('limit', 10)
+                else:
+                    # GET request - parse query parameters
+                    categories_param = request.args.get('categories')
+                    if categories_param:
+                        categories = [cat.strip() for cat in categories_param.split(',')]
+                    else:
+                        categories = None
+                    limit = int(request.args.get('limit', 10))
+                
+                # Get trending news
+                news_items = self.ai_assistant.get_trending_news_sync(categories, limit)
+                
+                return jsonify({
+                    'success': True,
+                    'timestamp': datetime.now().isoformat(),
+                    'news_count': len(news_items),
+                    'categories_requested': categories or ["politics", "sports", "crypto", "technology", "economics", "general"],
+                    'trending_news': [asdict(item) for item in news_items]
+                })
+                
+            except Exception as e:
+                logger.error(f"Error getting trending news: {e}")
+                return jsonify({
+                    'success': False,
+                    'error': f'Server error: {str(e)}'
+                }), 500
+        
         @self.app.route('/api/market/search-suggestions', methods=['POST'])
         def get_market_suggestions():
             """Alternative endpoint name for market suggestions"""
             try:
                 data = request.json
                 query = data.get('query', '')
-                num_suggestions = data.get('num_suggestions', 6)  # Changed default to 6
+                num_suggestions = data.get('num_suggestions', 6)
                 
                 if not query:
                     return jsonify({
@@ -198,10 +375,11 @@ class SimplifiedPredictionAPI:
                 
                 return jsonify({
                     'success': True,
-                    'session_id': session_id,  # Added session ID
+                    'session_id': session_id,
                     'query': query,
                     'prediction_markets': [asdict(s) for s in suggestions],
-                    'count': len(suggestions)
+                    'count': len(suggestions),
+                    'note': 'All markets end at least 1 hour from current time'
                 })
                 
             except Exception as e:
@@ -348,7 +526,8 @@ class SimplifiedPredictionAPI:
                     'gemini': Config.GEMINI_API_KEY is not None,
                     'api': True
                 },
-                'message': 'Prediction Markets Server - Forward queries to Gemini AI'
+                'message': 'Prediction Markets Server - Forward queries to Gemini AI',
+                'time_constraint': 'All markets end at least 1 hour from current time'
             })
         
         @self.app.route('/api/debug/gemini', methods=['GET'])
@@ -363,7 +542,6 @@ class SimplifiedPredictionAPI:
                         'api_key_length': len(Config.GEMINI_API_KEY) if Config.GEMINI_API_KEY else 0
                     })
                 
-      
                 test_response = self.ai_assistant.gemini_client.generate_content(
                     "Say 'Gemini connection working'",
                     generation_config={"max_output_tokens": 10}
@@ -389,20 +567,33 @@ class SimplifiedPredictionAPI:
             return jsonify({
                 'message': 'Prediction Markets Server',
                 'description': 'Forward queries to Gemini AI for yes/no prediction markets',
+                'time_constraint': 'All markets end at least 1 hour from current time',
                 'endpoints': {
                     '/api/predict': 'POST - Main endpoint for generating prediction markets',
                     '/api/market/search-suggestions': 'POST - Get market suggestions with session ID',
                     '/api/market/analyze': 'POST - Analyze market description', 
                     '/api/market/quick-prediction': 'POST - Get quick yes/no prediction',
+                    '/api/news/trending': 'GET/POST - Get trending news for prediction markets',
                     '/api/health': 'GET - Health check',
                     '/api/debug/gemini': 'GET - Test Gemini connection'
                 },
                 'usage': {
-                    'url': '/api/predict',
-                    'method': 'POST',
-                    'body': {
-                        'query': 'your prediction query here',
-                        'num_suggestions': 8  # Updated to reflect new default
+                    'prediction_markets': {
+                        'url': '/api/predict',
+                        'method': 'POST',
+                        'body': {
+                            'query': 'your prediction query here',
+                            'num_suggestions': 6
+                        }
+                    },
+                    'trending_news': {
+                        'url': '/api/news/trending',
+                        'method': 'GET or POST',
+                        'GET_params': '?categories=crypto,politics&limit=5',
+                        'POST_body': {
+                            'categories': ['politics', 'sports', 'crypto', 'technology', 'economics', 'general'],
+                            'limit': 10
+                        }
                     }
                 },
                 'example_queries': [
@@ -416,6 +607,7 @@ class SimplifiedPredictionAPI:
         """Run the Flask server"""
         logger.info(f"Starting Prediction Markets Server on {host}:{port}")
         logger.info(f"Gemini Integration: {'✓' if Config.GEMINI_API_KEY else '✗'}")
+        logger.info("New features: 1-hour minimum market duration, trending news endpoint")
         
         if not Config.GEMINI_API_KEY:
             logger.warning("Gemini API key not found! Set GEMINI_API_KEY environment variable")

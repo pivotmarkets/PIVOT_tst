@@ -1,4 +1,4 @@
-import { MODULE_ADDRESS } from "@/constants";
+import { MODULE_ADDRESS, COIN_TYPE } from "@/constants";
 import { aptosClient } from "@/utils/aptosClient";
 
 // Type definitions for return values
@@ -49,27 +49,186 @@ export interface MarketSummary {
   resolved: boolean;
 }
 
+interface Position {
+  user: string;
+  outcome: number;
+  shares: number;
+  avgPrice: number;
+  timestamp: number;
+}
+
+interface MarketPoolBalances {
+  yesPoolBalance: number;
+  noPoolBalance: number;
+  liquidityPoolBalance: number;
+  totalValueLocked: number;
+}
+
+interface PlatformStats {
+  totalMarkets: number;
+  totalTvl: number;
+  activeMarkets: number;
+}
+
 /**
- * Get user positions in a specific market
+ * Get positions of a user in a market
  */
 export const getUserPositions = async (
   marketId: number,
-  userAddress: string,
-  coinType: string = "0x1::aptos_coin::AptosCoin",
-): Promise<string[]> => {
+  userAddress: string
+): Promise<number[]> => {
   try {
-    const response = await aptosClient().view<[string[]]>({
+    const response = await aptosClient().view<string[][]>({
       payload: {
         function: `${MODULE_ADDRESS}::pivot_market_tab::get_user_positions`,
-        typeArguments: [coinType],
         functionArguments: [marketId.toString(), userAddress],
       },
     });
 
-    return response[0];
+    console.log("the response", response);
+
+    // Flatten [["0", "2"]] → ["0","2"] → [0,2]
+    return response.flat().map((id) => Number(id));
   } catch (error: any) {
     console.error("Error getting user positions:", error);
     return [];
+  }
+};
+
+
+export const getUserPositionDetails = async (
+  marketId: number,
+  userAddress: string
+): Promise<Position[]> => {
+  try {
+    const positionIds = await getUserPositions(marketId, userAddress);
+    console.log(" efff Position IDs:", positionIds); // should now log: [0, 2]
+
+    if (positionIds.length === 0) return [];
+
+    const results = await Promise.allSettled(
+      positionIds.map((positionId) =>
+        aptosClient().view<[string, string, string, string, string]>({
+          payload: {
+            function: `${MODULE_ADDRESS}::pivot_market_tab::get_position`,
+            functionArguments: [marketId.toString(), positionId.toString()],
+          },
+        })
+      )
+    );
+
+    const positions: Position[] = results
+      .filter(
+        (res): res is PromiseFulfilledResult<[string, string, string, string, string]> =>
+          res.status === "fulfilled"
+      )
+      .map((res, i) => {
+        const [user, outcome, shares, avgPrice, timestamp] = res.value;
+        return {
+          id: positionIds[i], // keep the ID too
+          user,
+          outcome: Number(outcome),
+          shares: Number(shares),
+          avgPrice: Number(avgPrice),
+          timestamp: Number(timestamp),
+        };
+      });
+
+    return positions;
+  } catch (error: any) {
+    console.error("Error getting user position details:", error);
+    return [];
+  }
+};
+
+
+export const getMarketTotalValueLocked = async (marketId: number): Promise<number> => {
+  try {
+    if (!Number.isInteger(marketId) || marketId < 0) {
+      console.error("Invalid marketId:", marketId);
+      return 0;
+    }
+
+    const response = await aptosClient().view<string[]>({
+      payload: {
+        function: `${MODULE_ADDRESS}::pivot_market_tab::get_market_total_value_locked`,
+        functionArguments: [marketId.toString()],
+      },
+    });
+    console.log("Raw response from get_market_total_value_locked:", response);
+
+    return Number(response[0]);
+  } catch (error: any) {
+    console.error("Error getting market TVL:", error);
+    return 0;
+  }
+};
+
+export const getMarketPoolBalances = async (marketId: number): Promise<MarketPoolBalances> => {
+  try {
+   
+
+    const response = await aptosClient().view<string[]>({
+      payload: {
+        function: `${MODULE_ADDRESS}::pivot_market_tab::get_market_pool_balances`,
+        functionArguments: [marketId.toString()],
+      },
+    });
+    console.log("Raw response from get_market_pool_balances:", response);
+
+    const [yesPoolBalance, noPoolBalance, liquidityPoolBalance, totalValueLocked] = response;
+    return {
+      yesPoolBalance: Number(yesPoolBalance),
+      noPoolBalance: Number(noPoolBalance),
+      liquidityPoolBalance: Number(liquidityPoolBalance),
+      totalValueLocked: Number(totalValueLocked),
+    };
+  } catch (error: any) {
+    console.error("Error getting market pool balances:", error);
+    return { yesPoolBalance: 0, noPoolBalance: 0, liquidityPoolBalance: 0, totalValueLocked: 0 };
+  }
+};
+
+export const getAllMarketsWithTvl = async (): Promise<{ marketIds: number[]; tvlValues: number[] }> => {
+  try {
+    const response = await aptosClient().view<[string[], string[]]>({
+      payload: {
+        function: `${MODULE_ADDRESS}::pivot_market_tab::get_all_markets_with_tvl`,
+        functionArguments: [],
+      },
+    });
+    console.log("Raw response from get_all_markets_with_tvl:", response);
+
+    const [marketIds, tvlValues] = response;
+    return {
+      marketIds: marketIds.map((id) => Number(id)).filter((id) => !isNaN(id)),
+      tvlValues: tvlValues.map((tvl) => Number(tvl)).filter((tvl) => !isNaN(tvl)),
+    };
+  } catch (error: any) {
+    console.error("Error getting all markets with TVL:", error);
+    return { marketIds: [], tvlValues: [] };
+  }
+};
+
+export const getPlatformStats = async (): Promise<PlatformStats> => {
+  try {
+    const response = await aptosClient().view<string[]>({
+      payload: {
+        function: `${MODULE_ADDRESS}::pivot_market_tab::get_platform_stats`,
+        functionArguments: [],
+      },
+    });
+    console.log("Raw response from get_platform_stats:", response);
+
+    const [totalMarkets, totalTvl, activeMarkets] = response;
+    return {
+      totalMarkets: Number(totalMarkets),
+      totalTvl: Number(totalTvl),
+      activeMarkets: Number(activeMarkets),
+    };
+  } catch (error: any) {
+    console.error("Error getting platform stats:", error);
+    return { totalMarkets: 0, totalTvl: 0, activeMarkets: 0 };
   }
 };
 
@@ -78,7 +237,6 @@ export const getUserPositions = async (
  */
 export const getMarketDetails = async (
   marketId: number,
-  coinType: string = "0x1::aptos_coin::AptosCoin",
 ): Promise<MarketDetails | null> => {
   try {
     const response = await aptosClient().view<
@@ -106,7 +264,6 @@ export const getMarketDetails = async (
     >({
       payload: {
         function: `${MODULE_ADDRESS}::pivot_market_tab::get_market_details`,
-        typeArguments: [coinType],
         functionArguments: [marketId.toString()],
       },
     });
@@ -186,7 +343,7 @@ export const getMarketsPaginated = async (
 /**
  * Get basic market info for listing (lighter version)
  */
-export const getMarketSummary = async (marketId: number): Promise<MarketSummary | null> => {
+export const getMarketSummary = async (marketId: number): Promise<any | null> => {
   try {
     const response = await aptosClient().view<
       [
@@ -229,15 +386,12 @@ export const getMarketSummary = async (marketId: number): Promise<MarketSummary 
  */
 export const getAllMarketSummaries = async (): Promise<MarketSummary[]> => {
   try {
-    // First get all market IDs
     const marketIds = await getAllMarketIds();
 
-    // Then get summary for each market
     const summaryPromises = marketIds.map((id) => getMarketSummary(parseInt(id)));
 
     const summaries = await Promise.all(summaryPromises);
 
-    // Filter out any null results
     return summaries.filter((summary) => summary !== null) as MarketSummary[];
   } catch (error: any) {
     console.error("Error getting all market summaries:", error);
@@ -289,7 +443,7 @@ export const getPositionDetails = async (
       ]
     >({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_tab::get_position`,
+        function: `${MODULE_ADDRESS}::pivot_market_tab::get_user_positions`,
         typeArguments: [coinType],
         functionArguments: [marketId.toString(), positionId.toString()],
       },
@@ -364,14 +518,14 @@ export const getMarketCount = async (coinType: string = "0x1::aptos_coin::AptosC
 export const getUserPositionsWithDetails = async (
   marketId: number,
   userAddress: string,
-  coinType: string = "0x1::aptos_coin::AptosCoin",
+  coinType: string = "2",
 ): Promise<UserPosition[]> => {
   try {
     // First get the position IDs
-    const positionIds = await getUserPositions(marketId, userAddress, coinType);
+    const positionIds = await getUserPositions(marketId, userAddress);
 
     // Then get details for each position
-    const positionPromises = positionIds.map((id) => getPositionDetails(marketId, parseInt(id), coinType));
+    const positionPromises = positionIds.map((id) => getPositionDetails(marketId, parseInt(id as any), coinType));
 
     const positions = await Promise.all(positionPromises);
 
