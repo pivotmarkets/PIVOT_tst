@@ -70,7 +70,7 @@ export function WalletSelector() {
         <DropdownMenuTrigger asChild>
           <Button
             variant="default"
-            className="group relative overflow-hidden bg-gray-800/80 font-medium px-4 py-2 rounded-lg hover:shadow-sm hover:shadow-black-900/10"
+            className="group relative overflow-hidden bg-[#008259] font-medium px-4 py-2 rounded-lg hover:shadow-sm hover:shadow-black-900/10 focus:outline-none focus:ring-0 active:outline-none active:ring-0"
           >
             <div className="relative flex items-center gap-3">
               {/* AI Profile Circle */}
@@ -90,10 +90,7 @@ export function WalletSelector() {
           </Button>
         </DropdownMenuTrigger>
 
-        <DropdownMenuContent
-          align="end"
-          className="w-64 border-0 bg-gray-800/80 shadow-2xl rounded-xl p-2"
-        >
+        <DropdownMenuContent align="end" className="w-64 border-0 bg-[#2d2d33] shadow-2xl rounded-xl p-2">
           {/* Profile Header */}
           <div className="px-3 py-3 mb-2">
             <div className="flex items-center gap-3">
@@ -103,7 +100,7 @@ export function WalletSelector() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-slate-200 dark:text-slate-100">
-                    {account?.ansName || "Wallet User"}
+                    {account?.ansName || "User"}
                   </span>
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                 </div>

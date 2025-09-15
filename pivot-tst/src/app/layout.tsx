@@ -22,15 +22,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
-        <WalletProvider>
-          <ReactQueryProvider>
-            <div id="root">{children}</div>
-            <WrongNetworkAlert />
-            <Toaster />
-          </ReactQueryProvider>
-        </WalletProvider>
-      </body>
-    </html>
+    <body className="bg-[#1a1a1e57] text-white">
+      <WalletProvider>
+        <ReactQueryProvider>
+          <div id="root">{children}</div>
+          <WrongNetworkAlert />
+          <Toaster />
+        </ReactQueryProvider>
+      </WalletProvider>
+    </body>
+  </html>
   );
 }

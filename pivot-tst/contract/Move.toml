@@ -1,10 +1,10 @@
 [package]
-name = "pivot_market_tab"
-version = "1.3.2"
+name = "pivot_market_pool"
+version = "1.4.5"
 authors = []
 
 [addresses]
-pivot_market_tab = "0x8c07310ed7334fb67d661843fa50c9311601880e6312cb00f68c5a71d125d104"
+pivot_market_pool = "0x4ec842f9be21e687b8ab1eaa770d6ae80b7456f2b31a5c0221b7310095b84396"
 
 [dependencies]
 AptosFramework = { git = "https://github.com/aptos-labs/aptos-framework.git", rev = "mainnet", subdir = "aptos-framework" }

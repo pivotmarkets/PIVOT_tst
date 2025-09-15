@@ -132,7 +132,7 @@ const MarketCard = ({ market, onPredict }: any) => {
 
   return (
     <div
-      className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-6  hover:shadow-lg transition-all duration-300 cursor-pointer group animate-fadeInUp"
+      className="bg-[#2f2f33]/60 border border-gray-700/50 rounded-xl p-6  hover:shadow-lg transition-all duration-300 cursor-pointer group animate-fadeInUp"
       onClick={handleMarketClick}
     >
       {/* Header */}
@@ -266,7 +266,7 @@ const AIAssistantPanel = ({ isVisible, onClose }: any) => {
           <h3 className="text-white font-medium">AI Market Assistant</h3>
         </div>
         <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors text-xl">
-          X
+          x
         </button>
       </div>
 
@@ -285,7 +285,7 @@ const AIAssistantPanel = ({ isVisible, onClose }: any) => {
           <input
             type="text"
             placeholder="Ask about market trends..."
-            className="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2 text-white text-sm placeholder-gray-400 focus:outline-none focus:border-blue-500"
+            className="flex-1 bg-[#2f2f33] border border-gray-600 rounded px-3 py-2 text-white text-sm placeholder-gray-400 focus:outline-none focus:border-blue-500"
           />
           <button className="px-4 py-2 bg-[#008259] hover:bg-blue-500 text-white rounded transition-colors">
             <MessageCircle className="w-4 h-4" />
@@ -379,7 +379,7 @@ export default function PivotMarketApp() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <div className="min-h-screen overflow-hidden bg-[#232328]">
       <style jsx>{`
         @keyframes fadeInUp {
           from {
@@ -427,34 +427,21 @@ export default function PivotMarketApp() {
       `}</style>
 
       {/* Header */}
-      <header className=" bg-gray-900/80  sticky top-0 z-40 animate-fadeInUp">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+      <header className="bg-[#1a1a1e57] sticky top-0 z-40 overflow-hidden animate-fadeInUp border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
+
+        <div className="max-w-7xl mx-auto px-6 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
               <h1 className="text-2xl font-bold text-white">
-                Pivot<span className="text-blue-400">AI</span>
+                Pivot<span className="text-blue-400"></span>
               </h1>
-              <nav className="flex items-center gap-6 text-gray-300">
-                <a href="#" className="hover:text-white transition-colors">
-                  Trading
-                </a>
-                <a href="#" className="hover:text-white transition-colors">
-                  Earn
-                </a>
-                <a href="#" className="hover:text-white transition-colors">
-                  Launch
-                </a>
-                <a href="#" className="hover:text-white transition-colors">
-                  More
-                </a>
-              </nav>
             </div>
 
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setShowAIAssistant(!showAIAssistant)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
-                  showAIAssistant ? "bg-[#008259] text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                  showAIAssistant ? "bg-[#008259] text-white" : "bg-[#2f2f33] text-gray-300 hover:bg-gray-700"
                 }`}
               >
                 <Sparkles className="w-4 h-4" />
@@ -504,7 +491,7 @@ export default function PivotMarketApp() {
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   selectedCategory === category
                     ? "bg-[#008259] text-white"
-                    : "text-gray-400 hover:text-white hover:bg-gray-800"
+                    : "text-gray-400 hover:text-white hover:bg-[#2f2f33]"
                 }`}
               >
                 {category}
@@ -524,7 +511,7 @@ export default function PivotMarketApp() {
                 placeholder="Search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                className="w-full pl-10 pr-4 py-2 bg-[#2f2f33] border border-gray-700/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
               />
             </div>
 
@@ -535,7 +522,7 @@ export default function PivotMarketApp() {
                   <select
                     value={selectedStatus}
                     onChange={(e) => setSelectedStatus(e.target.value)}
-                    className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 pr-8 text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+                    className="bg-[#2f2f33] border border-gray-700/50 rounded-lg px-3 py-2 pr-8 text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
                   >
                     {statusFilters.map((status) => (
                       <option key={status} value={status}>
@@ -553,7 +540,7 @@ export default function PivotMarketApp() {
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
-                    className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 pr-8 text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+                    className="bg-[#2f2f33] border border-gray-700/50 rounded-lg px-3 py-2 pr-8 text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
                   >
                     {sortOptions.map((option) => (
                       <option key={option} value={option}>

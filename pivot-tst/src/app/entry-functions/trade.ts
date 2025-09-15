@@ -12,9 +12,8 @@ interface SellPositionArguments {
   marketId: number;
   positionId: number;
   sharesToSell: number;
-  minPrice: number; 
+  minPrice: number;
 }
-
 
 /**
  * Buy a position in a market
@@ -24,7 +23,7 @@ export const buyPosition = (args: BuyPositionArguments): InputTransactionData =>
 
   return {
     data: {
-      function: `${MODULE_ADDRESS}::pivot_market_tab::buy_position`,
+      function: `${MODULE_ADDRESS}::pivot_market_pool::buy_position`,
       functionArguments: [marketId, outcome, amount, maxSlippage],
     },
   };
@@ -38,13 +37,8 @@ export const sellPosition = (args: SellPositionArguments): InputTransactionData 
 
   return {
     data: {
-      function: `${MODULE_ADDRESS}::pivot_market_tab::sell_position`,
-      functionArguments: [
-        marketId,
-        positionId,
-        sharesToSell,
-        minPrice,
-      ],
+      function: `${MODULE_ADDRESS}::pivot_market_pool::sell_position`,
+      functionArguments: [marketId, positionId, sharesToSell, minPrice],
     },
   };
 };

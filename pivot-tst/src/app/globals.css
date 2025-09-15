@@ -75,3 +75,21 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer base {
+  html, body {
+    background-color: #1a1a1e57 !important;
+  }
+}
+
+html, body {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+  overflow: scroll; 
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none; 
+}
+

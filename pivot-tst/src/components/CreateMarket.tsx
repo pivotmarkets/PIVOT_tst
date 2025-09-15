@@ -281,11 +281,15 @@ const CreateMarket = () => {
       marketProposal.resolution_criteria ||
       "This market will be resolved based on official sources and verifiable information at the specified end time.";
     const endTime = marketProposal.end_date;
-    const oracle = "0x8c07310ed7334fb67d661843fa50c9311601880e6312cb00f68c5a71d125d104";
+    const oracle = "0x4ec842f9be21e687b8ab1eaa770d6ae80b7456f2b31a5c0221b7310095b84396";
 
-    // Parse the date string and convert to Unix timestamp
-    const [day, month, year] = endTime.split("/");
-    const endDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    const [datePart, timePart] = endTime.split(" ");
+    const [day, month, year] = datePart.split("/");
+    const [hours, minutes] = timePart.split(":");
+
+    // Create date object with the specific time
+    const endDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
+
     const formattedEndTime = Math.floor(endDate.getTime() / 1000);
 
     // Validate end time is in the future

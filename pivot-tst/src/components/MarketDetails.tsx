@@ -12,14 +12,17 @@ import {
   BarChart3,
   Minus,
   Wallet,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
-import {
-  getMarketDetails,
-  getUserPositionDetails,
-} from "@/app/view-functions/markets";
+import { getMarketDetails, getUserPositionDetails } from "@/app/view-functions/markets";
 import { WalletSelector } from "./WalletSelector";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { buyPosition } from "@/app/entry-functions/trade";
+import { aptosClient } from "@/utils/aptosClient";
+import { convertAmountFromHumanReadableToOnChain } from "@/utils/helpers";
+import { useQueryClient } from "@tanstack/react-query";
 
 // Types
 interface Position {
@@ -66,11 +69,16 @@ interface MarketDetails {
 const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const [userPositions, setUserPositions] = useState<Position[]>([]);
   const [marketDetails, setMarketDetails] = useState<MarketDetails>(null as any);
+  const [isOpen, setIsOpen] = useState(false);
+  const [side, setSide] = useState<"YES" | "NO" | null>(null);
+  const [amountUSDC, setAmountUSDC] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "positions" | "activity">("overview");
   const [sellLoading, setSellLoading] = useState<{ [key: string]: boolean }>({});
   const router = useRouter();
-  const { account } = useWallet();
+  const queryClient = useQueryClient();
+  const { signAndSubmitTransaction, account } = useWallet();
 
   useEffect(() => {
     const fetchMarketData = async () => {
@@ -100,6 +108,94 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
     fetchMarketData();
   }, [market?.id, account?.address]);
+
+  // helper
+  const calculatePayout = (side: "YES" | "NO", amountUSDC: number) => {
+    if (!amountUSDC || amountUSDC <= 0) return 0;
+    const price: any = side === "YES" ? marketDetails.yesPrice : marketDetails.noPrice;
+    const payout = (amountUSDC * 10000) / price;
+    return payout;
+  };
+
+  const handleBuy = async () => {
+    if (!account || !side) return;
+
+    try {
+      const marketId = market.id;
+      const amount = parseFloat(amountUSDC);
+      if (isNaN(amount) || amount <= 0) return;
+
+      // Pick correct side’s price & shares
+      const currentPrice = (side === "YES" ? market.yesPrice : market.noPrice) * 10000;
+      const currentShares = side === "YES" ? market.yesShares || 0 : market.noShares || 0;
+      const oppositeShares = side === "YES" ? market.noShares || 0 : market.yesShares || 0;
+
+      // Calculate shares & new price
+      const shares = Math.floor((amount * 10000) / currentPrice);
+      const totalShares = currentShares + oppositeShares + shares;
+      const newPrice = Math.floor(((currentShares + shares) * 10000) / totalShares);
+
+      // Slippage
+      const impact = Math.abs(newPrice - currentPrice);
+      const suggestedSlippage = impact + 50;
+      const maxSlippagePercent = suggestedSlippage;
+
+      console.log(`[BUY ${side}]`, {
+        maxSlippagePercent,
+        impact,
+        newPrice,
+        totalShares,
+      });
+
+      await onBuyPositionClick(marketId, side, amount, maxSlippagePercent);
+
+      // Reset & close
+      setIsOpen(false);
+      setSide(null);
+      setAmountUSDC("");
+    } catch (error) {
+      console.error(`Error buying ${side} position:`, error);
+    }
+  };
+
+  const onBuyPositionClick = async (
+    marketId: number,
+    outcome: "YES" | "NO",
+    amountUSDC: number,
+    maxSlippageBasisPoints: number, // Already in basis points, don't convert
+  ) => {
+    if (!account) return;
+
+    const USDC_DECIMALS = 6;
+    const outcomeValue = outcome === "YES" ? 1 : 2;
+
+    // Don't multiply by 100 since it's already in basis points
+    const maxSlippage = Math.max(maxSlippageBasisPoints, 100); // Minimum 1% slippage
+
+    try {
+      console.log("Max slippage (basis points):", maxSlippage);
+
+      const response = await signAndSubmitTransaction(
+        buyPosition({
+          marketId,
+          outcome: outcomeValue,
+          amount: convertAmountFromHumanReadableToOnChain(amountUSDC, USDC_DECIMALS),
+          maxSlippage: maxSlippage, // Already in basis points
+        }),
+      );
+
+      await aptosClient().waitForTransaction({
+        transactionHash: response.hash,
+      });
+
+      queryClient.refetchQueries();
+      console.log("Buy position response:", response);
+      return response;
+    } catch (error) {
+      console.error("Error buying position:", error);
+      throw error;
+    }
+  };
 
   // Helper functions to format the data
   const formatPrice = (price: string): number => {
@@ -173,7 +269,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900/80 p-6">
+      <div className="min-h-screen bg-[#232328] p-6">
         <div className="max-w-6xl mx-auto">
           <div className="animate-pulse">
             <div className="h-8 bg-gray-700 rounded w-1/3 mb-6"></div>
@@ -191,7 +287,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
   if (!market) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 p-6 flex items-center justify-center">
+      <div className="min-h-screen bg-[#232328] p-6 flex items-center justify-center">
         <div className="text-white text-xl">Market not found</div>
       </div>
     );
@@ -206,14 +302,14 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   }, 0);
 
   return (
-    <div className="min-h-screen bg-gray-900/80 p-6">
-      <header className="sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+    <div className="min-h-screen bg-[#232328] ">
+      <header className="sticky top-0 mb-6 bg-[#1a1a1e57] z-40 overflow-hidden animate-fadeInUp border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
+        <div className="max-w-7xl mx-auto px-4 py-2">
           <div className="flex justify-between items-center px-4 py-2">
             {/* Logo Section */}
-            <div className="cursor-pointer flex flex-col" onClick={() => router.push("/")}>
+            <div className="cursor-pointer flex flex-nowrap flex-col" onClick={() => router.push("/")}>
               <h1 className="text-2xl font-bold text-white">
-                Pivot<span className="text-cyan-400">Markets</span>
+                Pivot<span className="text-cyan-400"></span>
               </h1>
               <div className="flex items-center gap-1 text-xs text-gray-400">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
@@ -230,19 +326,8 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       </header>
 
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <button
-            onClick={() => router.push("/")}
-            className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-800/50"
-          >
-            <ArrowLeft className="w-6 h-6" />
-          </button>
-          <h1 className="text-2xl font-bold text-white">Market Details</h1>
-        </div>
-
         {/* Market Info Card */}
-        <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-6 mb-6">
+        <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6 mb-6">
           <div className="flex justify-between items-start mb-4">
             <div className="flex-1">
               <h2 className="text-2xl font-bold text-white mb-2">{marketDetails.title}</h2>
@@ -251,7 +336,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
             </div>
             <span
               className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                !marketDetails.resolved ? "bg-green-500 text-white" : "bg-gray-500 text-white"
+                !marketDetails.resolved ? "bg-[#008259] text-white" : "bg-gray-500 text-white"
               }`}
             >
               {!marketDetails.resolved ? "Live" : "Resolved"}
@@ -286,7 +371,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
             </div>
             <div className="flex items-center gap-2 text-gray-300">
               <Users className="w-4 h-4 text-gray-400" />
-              <span>{marketDetails.participantCount} participants</span>
+              <span>{marketDetails.participantCount} Holders</span>
             </div>
             <div className="flex items-center gap-2 text-gray-300">
               <Clock className="w-4 h-4 text-gray-400" />
@@ -294,14 +379,171 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
             </div>
           </div>
         </div>
+        {/* Action Buttons */}
+        <div className="grid grid-cols-1 mb-6 md:grid-cols-2 gap-4">
+          <button
+            className="bg-[#008259] hover:bg-green-500 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
+            onClick={() => {
+              setSide("YES");
+              setIsOpen(true);
+            }}
+          >
+            <ArrowUp className="w-5 h-5" />
+            Buy YES
+          </button>
+
+          <button
+            className="bg-[#d32f2f] hover:bg-red-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
+            onClick={() => {
+              setSide("NO");
+              setIsOpen(true);
+            }}
+          >
+            <ArrowDown className="w-5 h-5" />
+            Buy NO
+          </button>
+        </div>
+
+        {isOpen && (
+          <div className="fixed inset-0 flex items-center backdrop-blur-sm justify-center bg-black/50 z-50">
+            <div className="bg-[#232328] text-white pb-8 pt-6 px-6 rounded-xl shadow-lg w-[400px] max-w-[90vw]">
+              {/* Header with Yes/No buttons */}
+              <div className="flex gap-4 mb-6">
+                <button
+                  onClick={() => setSide("YES")}
+                  className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                    side === "YES" ? "bg-[#008259] text-white" : "bg-[#4a4a4a] text-gray-300 hover:bg-[#5a5a5a]"
+                  }`}
+                >
+                  Yes
+                </button>
+                <button
+                  onClick={() => setSide("NO")}
+                  className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                    side === "NO" ? "bg-[#8b4444] text-white" : "bg-[#4a4a4a] text-gray-300 hover:bg-[#5a5a5a]"
+                  }`}
+                >
+                  No
+                </button>
+                <div className="ml-auto flex gap-2">
+                  <button
+                    onClick={() => {
+                      setIsOpen(false);
+                      setSide(null);
+                      setAmountUSDC("");
+                    }}
+                    className="px-3 py-2 bg-[#3a3d4a] rounded-lg text-lg hover:bg-[#4a4d5a]"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+
+              {/* Bet Amount Section */}
+              <div className="mb-6">
+                <label className="block mb-3 text-gray-300 text-sm font-medium">Bet amount</label>
+                <div className="relative">
+                  <div className="flex items-center bg-[#1e2028] border-2 border-[#4a5568] rounded-lg p-3 focus-within:border-[#008259]">
+                    <div className="flex items-center gap-2 mr-3">
+                      <div className="w-6 h-6 bg-blue-400 rounded-full flex items-center justify-center text-xs font-bold">
+                        $
+                      </div>
+                      <input
+                        type="number"
+                        value={amountUSDC}
+                        onChange={(e) => setAmountUSDC(e.target.value)}
+                        className="bg-transparent text-white text-lg font-semibold outline-none min-w-0 flex-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        placeholder="10"
+                      />
+                    </div>
+                    <div className="flex -ml-28 gap-2">
+                      <button
+                        onClick={() => setAmountUSDC((prev) => Math.max(0, (parseFloat(prev) || 0) - 10).toString())}
+                        className="px-3 py-1 bg-[#3a3d4a] rounded text-sm hover:bg-[#4a4d5a] transition-colors"
+                      >
+                        -10
+                      </button>
+                      <button
+                        onClick={() => setAmountUSDC((prev) => ((parseFloat(prev) || 0) + 10).toString())}
+                        className="px-3 py-1 bg-[#3a3d4a] rounded text-sm hover:bg-[#4a4d5a] transition-colors"
+                      >
+                        +10
+                      </button>
+                      <button
+                        onClick={() => setAmountUSDC((prev) => ((parseFloat(prev) || 0) + 50).toString())}
+                        className="px-3 py-1 bg-[#3a3d4a] rounded text-sm hover:bg-[#4a4d5a] transition-colors"
+                      >
+                        +50
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Probability and Payout Info */}
+              <div className="mb-6 space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">New probability</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-white text-lg font-bold">
+                      {side === "YES" ? `${(yesPrice * 100).toFixed(1)}%` : `${(noPrice * 100).toFixed(1)}%`}
+                    </span>
+                    <span className="text-gray-400 text-sm">↓1.6% 🔒</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">To win</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-white text-lg font-bold">
+                      ${amountUSDC ? calculatePayout(side as any, parseFloat(amountUSDC)).toFixed(0) : "0"}
+                    </span>
+                    <span className="text-green-400 text-sm font-medium">
+                      +
+                      {amountUSDC
+                        ? (
+                            (calculatePayout(side as any, parseFloat(amountUSDC)) / parseFloat(amountUSDC || "1") - 1) *
+                            100
+                          ).toFixed(1)
+                        : "954.0"}
+                      %
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <button
+                onClick={handleBuy}
+                disabled={!side || !amountUSDC}
+                className={`w-full py-4 rounded-lg font-semibold text-lg transition-colors ${
+                  side === "NO"
+                    ? "bg-[#d32f2f] hover:bg-[#b71c1c] text-white"
+                    : "bg-[#008259] hover:bg-[#006b47] text-white"
+                } disabled:bg-gray-600 disabled:cursor-not-allowed`}
+              >
+                Buy {side || "NO"} to win $
+                {amountUSDC ? calculatePayout(side as any, parseFloat(amountUSDC)).toFixed(0) : "0"}
+              </button>
+
+              {/* Balance */}
+              <div className="mt-6 flex justify-between items-center text-sm">
+                <span className="text-gray-400">bal:</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-white">0 USDC</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tab Navigation */}
-        <div className="flex space-x-1 bg-gray-800/60 border border-gray-700/50 rounded-lg p-1 mb-6">
+        <div className="flex space-x-1 bg-[#2f2f33] border border-gray-700/50 rounded-lg p-1 mb-6">
           <button
             onClick={() => setActiveTab("overview")}
             className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
               activeTab === "overview"
-                ? "bg-blue-600 text-white"
+                ? "bg-[#008259] text-white"
                 : "text-gray-400 hover:text-white hover:bg-gray-700/50"
             }`}
           >
@@ -311,20 +553,22 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
             onClick={() => setActiveTab("positions")}
             className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
               activeTab === "positions"
-                ? "bg-blue-600 text-white"
+                ? "bg-[#008259] text-white"
                 : "text-gray-400 hover:text-white hover:bg-gray-700/50"
             }`}
           >
             Your Positions
             {userPositions.length > 0 && (
-              <span className="ml-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-full">{userPositions.length}</span>
+              <span className="ml-2 bg-[#008259] text-white text-xs px-2 py-1 rounded-full">
+                {userPositions.length}
+              </span>
             )}
           </button>
           <button
             onClick={() => setActiveTab("activity")}
             className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
               activeTab === "activity"
-                ? "bg-blue-600 text-white"
+                ? "bg-[#008259] text-white"
                 : "text-gray-400 hover:text-white hover:bg-gray-700/50"
             }`}
           >
@@ -336,54 +580,44 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         {activeTab === "overview" && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-6">
+              <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
                 <h3 className="text-lg font-semibold text-white mb-4">Total Value Locked</h3>
-                <div className="text-2xl font-bold text-blue-400">{formatCurrency(marketDetails.totalValueLocked)}</div>
+                <div className="text-2xl font-bold text-slate-400">
+                  {formatCurrency(marketDetails.totalValueLocked)}
+                </div>
               </div>
-              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-6">
+              <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
                 <h3 className="text-lg font-semibold text-white mb-4">Total Liquidity</h3>
-                <div className="text-2xl font-bold text-purple-400">{formatCurrency(marketDetails.totalLiquidity)}</div>
+                <div className="text-2xl font-bold text-slate-400">{formatCurrency(marketDetails.totalLiquidity)}</div>
               </div>
-              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-6">
+              <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
                 <h3 className="text-lg font-semibold text-white mb-4">Created</h3>
                 <div className="text-lg font-bold text-gray-300">{formatDate(marketDetails.creationTime)}</div>
               </div>
 
               {/* Additional stats */}
-              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-6">
+              <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
                 <h3 className="text-lg font-semibold text-white mb-4">YES Shares</h3>
                 <div className="text-lg font-bold text-green-400">
                   {(parseInt(marketDetails.totalYesShares) / 1000000).toLocaleString()}
                 </div>
               </div>
-              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-6">
+              <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
                 <h3 className="text-lg font-semibold text-white mb-4">NO Shares</h3>
                 <div className="text-lg font-bold text-red-400">
                   {(parseInt(marketDetails.totalNoShares) / 1000000).toLocaleString()}
                 </div>
               </div>
-              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-6">
+              <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
                 <h3 className="text-lg font-semibold text-white mb-4">Market Ends</h3>
                 <div className="text-lg font-bold text-gray-300">{formatDate(marketDetails.endTime)}</div>
               </div>
             </div>
 
             {/* Resolution Criteria */}
-            <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-6">
+            <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
               <h3 className="text-lg font-semibold text-white mb-4">Resolution Criteria</h3>
               <div className="text-sm font-bold text-slate-200">{marketDetails.resolutionCriteria}</div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <button className="bg-green-600 hover:bg-green-500 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2">
-                <TrendingUp className="w-5 h-5" />
-                Buy YES Shares
-              </button>
-              <button className="bg-red-600 hover:bg-red-500 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2">
-                <TrendingDown className="w-5 h-5" />
-                Buy NO Shares
-              </button>
             </div>
           </div>
         )}
@@ -392,7 +626,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         {activeTab === "positions" && (
           <div className="space-y-6">
             {!account?.address ? (
-              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-8 text-center">
+              <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-8 text-center">
                 <div className="text-gray-400 mb-4">
                   <Wallet className="w-12 h-12 mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">Connect Your Wallet</h3>
@@ -400,7 +634,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                 </div>
               </div>
             ) : userPositions.length === 0 ? (
-              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-8 text-center">
+              <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-8 text-center">
                 <div className="text-gray-400">
                   <BarChart3 className="w-12 h-12 mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">No Positions Yet</h3>
@@ -410,7 +644,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
             ) : (
               <div className="space-y-4">
                 {/* Position Summary */}
-                <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-6">
+                <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
                   <h3 className="text-lg font-semibold text-white mb-4">Position Summary</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
                     <div>
@@ -440,7 +674,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   const currentPrice = position.outcome === 1 ? yesPrice : noPrice;
 
                   return (
-                    <div key={index} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-6">
+                    <div key={index} className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex items-center gap-3">
                           <div
@@ -463,7 +697,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                           className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
                             isLoading
                               ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                              : "bg-blue-600 hover:bg-blue-500 text-white"
+                              : "bg-[#008259] hover:bg-blue-500 text-white"
                           }`}
                         >
                           {isLoading ? (
@@ -522,7 +756,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
         {/* Activity Tab */}
         {activeTab === "activity" && (
-          <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-8 text-center">
+          <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-8 text-center">
             <div className="text-gray-400">
               <Activity className="w-12 h-12 mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">Activity Feed</h3>

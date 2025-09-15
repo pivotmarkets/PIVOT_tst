@@ -42,7 +42,7 @@ export interface MarketSummary {
   title: string;
   description: string;
   endTime: string;
-  yesPrice: string; 
+  yesPrice: string;
   noPrice: string;
   participantCount: string;
   totalValueLocked: string;
@@ -73,14 +73,11 @@ interface PlatformStats {
 /**
  * Get positions of a user in a market
  */
-export const getUserPositions = async (
-  marketId: number,
-  userAddress: string
-): Promise<number[]> => {
+export const getUserPositions = async (marketId: number, userAddress: string): Promise<number[]> => {
   try {
     const response = await aptosClient().view<string[][]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_tab::get_user_positions`,
+        function: `${MODULE_ADDRESS}::pivot_market_pool::get_user_positions`,
         functionArguments: [marketId.toString(), userAddress],
       },
     });
@@ -95,11 +92,7 @@ export const getUserPositions = async (
   }
 };
 
-
-export const getUserPositionDetails = async (
-  marketId: number,
-  userAddress: string
-): Promise<Position[]> => {
+export const getUserPositionDetails = async (marketId: number, userAddress: string): Promise<Position[]> => {
   try {
     const positionIds = await getUserPositions(marketId, userAddress);
     console.log(" efff Position IDs:", positionIds); // should now log: [0, 2]
@@ -110,17 +103,16 @@ export const getUserPositionDetails = async (
       positionIds.map((positionId) =>
         aptosClient().view<[string, string, string, string, string]>({
           payload: {
-            function: `${MODULE_ADDRESS}::pivot_market_tab::get_position`,
+            function: `${MODULE_ADDRESS}::pivot_market_pool::get_position`,
             functionArguments: [marketId.toString(), positionId.toString()],
           },
-        })
-      )
+        }),
+      ),
     );
 
     const positions: Position[] = results
       .filter(
-        (res): res is PromiseFulfilledResult<[string, string, string, string, string]> =>
-          res.status === "fulfilled"
+        (res): res is PromiseFulfilledResult<[string, string, string, string, string]> => res.status === "fulfilled",
       )
       .map((res, i) => {
         const [user, outcome, shares, avgPrice, timestamp] = res.value;
@@ -141,7 +133,6 @@ export const getUserPositionDetails = async (
   }
 };
 
-
 export const getMarketTotalValueLocked = async (marketId: number): Promise<number> => {
   try {
     if (!Number.isInteger(marketId) || marketId < 0) {
@@ -151,7 +142,7 @@ export const getMarketTotalValueLocked = async (marketId: number): Promise<numbe
 
     const response = await aptosClient().view<string[]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_tab::get_market_total_value_locked`,
+        function: `${MODULE_ADDRESS}::pivot_market_pool::get_market_total_value_locked`,
         functionArguments: [marketId.toString()],
       },
     });
@@ -166,11 +157,9 @@ export const getMarketTotalValueLocked = async (marketId: number): Promise<numbe
 
 export const getMarketPoolBalances = async (marketId: number): Promise<MarketPoolBalances> => {
   try {
-   
-
     const response = await aptosClient().view<string[]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_tab::get_market_pool_balances`,
+        function: `${MODULE_ADDRESS}::pivot_market_pool::get_market_pool_balances`,
         functionArguments: [marketId.toString()],
       },
     });
@@ -193,7 +182,7 @@ export const getAllMarketsWithTvl = async (): Promise<{ marketIds: number[]; tvl
   try {
     const response = await aptosClient().view<[string[], string[]]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_tab::get_all_markets_with_tvl`,
+        function: `${MODULE_ADDRESS}::pivot_market_pool::get_all_markets_with_tvl`,
         functionArguments: [],
       },
     });
@@ -214,7 +203,7 @@ export const getPlatformStats = async (): Promise<PlatformStats> => {
   try {
     const response = await aptosClient().view<string[]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_tab::get_platform_stats`,
+        function: `${MODULE_ADDRESS}::pivot_market_pool::get_platform_stats`,
         functionArguments: [],
       },
     });
@@ -235,9 +224,7 @@ export const getPlatformStats = async (): Promise<PlatformStats> => {
 /**
  * Get detailed information about a specific market (updated with title and resolution criteria)
  */
-export const getMarketDetails = async (
-  marketId: number,
-): Promise<MarketDetails | null> => {
+export const getMarketDetails = async (marketId: number): Promise<MarketDetails | null> => {
   try {
     const response = await aptosClient().view<
       [
@@ -263,7 +250,7 @@ export const getMarketDetails = async (
       ]
     >({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_tab::get_market_details`,
+        function: `${MODULE_ADDRESS}::pivot_market_pool::get_market_details`,
         functionArguments: [marketId.toString()],
       },
     });
@@ -304,7 +291,7 @@ export const getAllMarketIds = async (
   try {
     const response = await aptosClient().view<[string[]]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_tab::get_all_market_ids`,
+        function: `${MODULE_ADDRESS}::pivot_market_pool::get_all_market_ids`,
         functionArguments: [],
       },
     });
@@ -327,7 +314,7 @@ export const getMarketsPaginated = async (
   try {
     const response = await aptosClient().view<[string[]]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_tab::get_markets_paginated`,
+        function: `${MODULE_ADDRESS}::pivot_market_pool::get_markets_paginated`,
         typeArguments: [coinType],
         functionArguments: [offset.toString(), limit.toString()],
       },
@@ -359,7 +346,7 @@ export const getMarketSummary = async (marketId: number): Promise<any | null> =>
       ]
     >({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_tab::get_market_summary`,
+        function: `${MODULE_ADDRESS}::pivot_market_pool::get_market_summary`,
         functionArguments: [marketId.toString()],
       },
     });
@@ -443,7 +430,7 @@ export const getPositionDetails = async (
       ]
     >({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_tab::get_user_positions`,
+        function: `${MODULE_ADDRESS}::pivot_market_pool::get_user_positions`,
         typeArguments: [coinType],
         functionArguments: [marketId.toString(), positionId.toString()],
       },
@@ -475,7 +462,7 @@ export const getMarketCreationParams = async (
   try {
     const response = await aptosClient().view<[string, string, string]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_tab::get_market_creation_params`,
+        function: `${MODULE_ADDRESS}::pivot_market_pool::get_market_creation_params`,
         typeArguments: [coinType],
         functionArguments: [],
       },
@@ -499,7 +486,7 @@ export const getMarketCount = async (coinType: string = "0x1::aptos_coin::AptosC
   try {
     const response = await aptosClient().view<[string]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_tab::get_market_count`,
+        function: `${MODULE_ADDRESS}::pivot_market_pool::get_market_count`,
         typeArguments: [coinType],
         functionArguments: [],
       },
