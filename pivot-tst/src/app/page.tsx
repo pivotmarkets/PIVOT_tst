@@ -31,11 +31,8 @@ function getTimeLeft(endTimeEpoch: string) {
   return `${minutes}m`;
 }
 
-const MarketCard = ({ market, onPredict }: any) => {
-  const queryClient = useQueryClient();
-  const { signAndSubmitTransaction, account } = useWallet();
+const MarketCard = ({ market }: any) => {
   const router = useRouter();
-  
 
   const handleMarketClick = () => {
     // Create a URL-friendly slug from the market title
@@ -46,77 +43,6 @@ const MarketCard = ({ market, onPredict }: any) => {
       .trim();
 
     router.push(`/market/${slug}/${market.id}`);
-  };
-
-  const onBuyPositionClick = async (
-    marketId: number,
-    outcome: "YES" | "NO",
-    amountUSDC: number,
-    maxSlippageBasisPoints: number, // Already in basis points, don't convert
-  ) => {
-    if (!account) return;
-
-    const USDC_DECIMALS = 6;
-    const outcomeValue = outcome === "YES" ? 1 : 2;
-
-    // Don't multiply by 100 since it's already in basis points
-    const maxSlippage = Math.max(maxSlippageBasisPoints, 100); // Minimum 1% slippage
-
-    try {
-      console.log("Max slippage (basis points):", maxSlippage);
-
-      const response = await signAndSubmitTransaction(
-        buyPosition({
-          marketId,
-          outcome: outcomeValue,
-          amount: convertAmountFromHumanReadableToOnChain(amountUSDC, USDC_DECIMALS),
-          maxSlippage: maxSlippage, // Already in basis points
-        }),
-      );
-
-      await aptosClient().waitForTransaction({
-        transactionHash: response.hash,
-      });
-
-      queryClient.refetchQueries();
-      console.log("Buy position response:", response);
-      return response;
-    } catch (error) {
-      console.error("Error buying position:", error);
-      throw error;
-    }
-  };
-
-
-  const onSellPositionClick = async (
-    marketId: number,
-    positionId: number,
-    sharesToSell: number,
-    minPrice: number, // Minimum acceptable price per share
-  ) => {
-    if (!account) return;
-
-    try {
-      const response = await signAndSubmitTransaction(
-        sellPosition({
-          marketId,
-          positionId,
-          sharesToSell,
-          minPrice,
-        }),
-      );
-
-      await aptosClient().waitForTransaction({
-        transactionHash: response.hash,
-      });
-
-      queryClient.refetchQueries();
-      console.log("Sell position response:", response);
-      return response;
-    } catch (error) {
-      console.error("Error selling position:", error);
-      throw error;
-    }
   };
 
   const getStatusColor = (status: any) => {
@@ -160,59 +86,14 @@ const MarketCard = ({ market, onPredict }: any) => {
 
       {/* Price Display */}
       <div className="grid grid-cols-2 gap-4 mb-4">
-        <div
-          className="bg-green-500/10 border border-green-500/20 rounded-lg p-3"
-          onClick={async () => {
-            if (!account) return;
-
-            try {
-              const marketId = market.id;
-              const amountUSDC = 2;
-              const currentPrice = market.yesPrice * 10000; // e.g., 0.5 * 10000 = 5000
-              const shares = Math.floor((amountUSDC * 10000) / currentPrice);
-              const totalShares = (market.yesShares || 0) + (market.noShares || 0) + shares; // Fetch shares via view fn
-              const newPrice = Math.floor((((market.yesShares || 0) + shares) * 10000) / totalShares);
-              const impact = Math.abs(newPrice - currentPrice);
-              const suggestedSlippage = impact + 50;
-
-              const maxSlippagePercent = suggestedSlippage; // 1% slippage tolerance
-              console.log("maxSlippagePercent", maxSlippagePercent, impact, newPrice, totalShares);
-              await onBuyPositionClick(marketId, "YES", amountUSDC, maxSlippagePercent);
-            } catch (error) {
-              console.error("Error buying YES position:", error);
-            }
-          }}
-        >
+        <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
           <div className="text-green-400 text-sm font-medium mb-1">YES</div>
           <div className="text-green-300 text-xl font-bold">{(market.yesPrice * 100).toFixed(0)}%</div>
           <div className="text-green-400/70 text-xs">
             {market.trend === "up" ? "↗" : "↘"} {Math.round(market.confidence * 100)}%
           </div>
         </div>
-        <div
-          className="bg-red-500/10 border border-red-500/20 rounded-lg p-3"
-          onClick={async () => {
-            if (!account) return;
-
-            try {
-              const marketId = market.id;
-              const amountUSDC = 2;
-              const currentPrice = market.noPrice * 10000; // e.g., 0.5 * 10000 = 5000
-              const shares = Math.floor((amountUSDC * 10000) / currentPrice);
-              const totalShares = (market.yesShares || 0) + (market.noShares || 0) + shares; // Fetch shares via view fn
-              const newPrice = Math.floor((((market.noShares || 0) + shares) * 10000) / totalShares);
-              const impact = Math.abs(newPrice - currentPrice);
-              const suggestedSlippage = impact + 50;
-
-              const maxSlippagePercent = suggestedSlippage; // 1% slippage tolerance
-              console.log("maxSlippagePercent", maxSlippagePercent, impact, newPrice, totalShares);
-              // Use reasonable slippage (not percentage, but basis points directly)
-              await onBuyPositionClick(marketId, "NO", amountUSDC, maxSlippagePercent);
-            } catch (error) {
-              console.error("Error buying NO position:", error);
-            }
-          }}
-        >
+        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
           <div className="text-red-400 text-sm font-medium mb-1">NO</div>
           <div className="text-red-300 text-xl font-bold">{(market.noPrice * 100).toFixed(0)}%</div>
           <div className="text-red-400/70 text-xs">
@@ -428,7 +309,6 @@ export default function PivotMarketApp() {
 
       {/* Header */}
       <header className="bg-[#1a1a1e57] sticky top-0 z-40 overflow-hidden animate-fadeInUp border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
-
         <div className="max-w-7xl mx-auto px-6 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">

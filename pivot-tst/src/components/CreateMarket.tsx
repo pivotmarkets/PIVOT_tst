@@ -283,15 +283,12 @@ const CreateMarket = () => {
     const endTime = marketProposal.end_date;
     const oracle = "0x4ec842f9be21e687b8ab1eaa770d6ae80b7456f2b31a5c0221b7310095b84396";
 
-    const [datePart, timePart] = endTime.split(" ");
-    const [day, month, year] = datePart.split("/");
-    const [hours, minutes] = timePart.split(":");
+    const timePart = endTime?.split("T")[1]; // or however you're extracting timePart
+    const timeComponents = timePart ? timePart.split(":") : ["23", "59", "59"]; // default to end of day
 
-    // Create date object with the specific time
-    const endDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
-
+    // Or if you're parsing the full date:
+    const endDate = new Date(endTime + (timePart ? "" : "T23:59:59"));
     const formattedEndTime = Math.floor(endDate.getTime() / 1000);
-
     // Validate end time is in the future
     const currentTime = Math.floor(Date.now() / 1000);
     if (formattedEndTime <= currentTime) {
@@ -889,10 +886,25 @@ const CreateMarket = () => {
                             ? parseDate(selectedSuggestion.end_date)
                             : ""
                       }
+                      onChange={(e) => {
+                        const existingDateTime = marketProposal?.end_date;
+                        let timePortion = "21:18"; // default time
+
+                        if (existingDateTime && existingDateTime.includes(" ")) {
+                          timePortion = existingDateTime.split(" ")[1];
+                        }
+
+                        const dateParts = e.target.value.split("-"); // [YYYY, MM, DD]
+                        const newDateTime = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]} ${timePortion}`;
+
+                        setMarketProposal((prev: any) => ({
+                          ...prev,
+                          end_date: newDateTime,
+                        }));
+                      }}
                       className="w-full bg-gray-700/50 border border-gray-600/50 rounded-lg p-3 text-gray-200 text-sm"
                     />
                   </div>
-
                   {/* New USDC Bet Amount Input */}
                   <div>
                     <h4 className="text-sm font-semibold text-cyan-400 mb-1">

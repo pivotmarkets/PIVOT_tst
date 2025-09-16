@@ -19,13 +19,14 @@ import { getMarketDetails, getUserPositionDetails } from "@/app/view-functions/m
 import { WalletSelector } from "./WalletSelector";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
-import { buyPosition } from "@/app/entry-functions/trade";
+import { buyPosition, sellPosition } from "@/app/entry-functions/trade";
 import { aptosClient } from "@/utils/aptosClient";
 import { convertAmountFromHumanReadableToOnChain } from "@/utils/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 
 // Types
 interface Position {
+  id: string;
   user: string;
   outcome: number;
   shares: number;
@@ -71,7 +72,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const [marketDetails, setMarketDetails] = useState<MarketDetails>(null as any);
   const [isOpen, setIsOpen] = useState(false);
   const [side, setSide] = useState<"YES" | "NO" | null>(null);
-  const [amountUSDC, setAmountUSDC] = useState("");
+  const [amountUSDC, setAmountUSDC] = useState("5");
 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "positions" | "activity">("overview");
@@ -95,7 +96,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         console.log("Market details:", marketDetails);
 
         // 2. Fetch user positions if wallet connected
-        const positions = await getUserPositionDetails(market.id, account.address.toString());
+        const positions: any = await getUserPositionDetails(market.id, account.address.toString());
 
         console.log("User positions:", positions);
         setUserPositions(positions || []);
@@ -109,6 +110,50 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     fetchMarketData();
   }, [market?.id, account?.address]);
 
+  useEffect(() => {
+    const refetchMissingData = async () => {
+      if (!market?.id || !account?.address) return;
+
+      // Check if critical data is missing
+      const isMarketDetailsMissing =
+        !marketDetails ||
+        marketDetails.yesPrice === undefined ||
+        marketDetails.noPrice === undefined ||
+        marketDetails.totalYesShares === undefined ||
+        marketDetails.totalNoShares === undefined;
+
+      const isUserPositionsMissing = userPositions === null || userPositions === undefined;
+
+      if (isMarketDetailsMissing || isUserPositionsMissing) {
+        console.log("Missing data detected, refetching...", {
+          isMarketDetailsMissing,
+          isUserPositionsMissing,
+        });
+
+        try {
+          if (isMarketDetailsMissing) {
+            const marketDetails = await getMarketDetails(market.id);
+            if (marketDetails) {
+              setMarketDetails(marketDetails as any);
+            }
+          }
+
+          if (isUserPositionsMissing) {
+            const positions: any = await getUserPositionDetails(market.id, account.address.toString());
+            setUserPositions(positions || []);
+          }
+        } catch (error) {
+          console.error("Error refetching missing data:", error);
+        }
+      }
+    };
+
+    // Only run if we have the required dependencies
+    if (market?.id && account?.address) {
+      refetchMissingData();
+    }
+  }, [marketDetails, userPositions, market?.id, account?.address]);
+
   // helper
   const calculatePayout = (side: "YES" | "NO", amountUSDC: number) => {
     if (!amountUSDC || amountUSDC <= 0) return 0;
@@ -119,36 +164,49 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
   const handleBuy = async () => {
     if (!account || !side) return;
-
+  
     try {
-      const marketId = market.id;
+      const marketId = marketDetails.id;
       const amount = parseFloat(amountUSDC);
+  
       if (isNaN(amount) || amount <= 0) return;
-
-      // Pick correct side’s price & shares
-      const currentPrice = (side === "YES" ? market.yesPrice : market.noPrice) * 10000;
-      const currentShares = side === "YES" ? market.yesShares || 0 : market.noShares || 0;
-      const oppositeShares = side === "YES" ? market.noShares || 0 : market.yesShares || 0;
-
-      // Calculate shares & new price
+  
+      // Ensure prices are numbers
+      const yesPrice = Number(marketDetails?.yesPrice) || 0;
+      const noPrice = Number(marketDetails?.noPrice) || 0;
+  
+      // Pick correct side's price & shares
+      const currentPrice = (side === "YES" ? yesPrice : noPrice) * 10000;
+      const currentShares = Number(side === "YES" ? marketDetails.totalYesShares : marketDetails.totalNoShares) || 0;
+      const oppositeShares = Number(side === "YES" ? marketDetails.totalNoShares : marketDetails.totalYesShares) || 0;
+  
+      if (currentPrice <= 0) {
+        console.error("Invalid price for side", { side, currentPrice });
+        return;
+      }
+  
+      // Calculate shares
       const shares = Math.floor((amount * 10000) / currentPrice);
-      const totalShares = currentShares + oppositeShares + shares;
-      const newPrice = Math.floor(((currentShares + shares) * 10000) / totalShares);
-
-      // Slippage
-      const impact = Math.abs(newPrice - currentPrice);
-      const suggestedSlippage = impact + 50;
-      const maxSlippagePercent = suggestedSlippage;
-
-      console.log(`[BUY ${side}]`, {
-        maxSlippagePercent,
-        impact,
-        newPrice,
-        totalShares,
-      });
-
-      await onBuyPositionClick(marketId, side, amount, maxSlippagePercent);
-
+      const existingTotalShares = currentShares + oppositeShares;
+      
+      let maxSlippagePercent;
+  
+      // Handle slippage calculation based on whether market has existing shares
+      if (existingTotalShares === 0) {
+        // New market case: use high slippage tolerance since price can change significantly
+        maxSlippagePercent = 5000; // 50% slippage tolerance for new markets
+        console.log("New market detected, using high slippage tolerance");
+      } else {
+        // Existing market case: calculate price impact
+        const totalShares = existingTotalShares + shares;
+        const newPrice = Math.floor(((currentShares + shares) * 10000) / totalShares);
+        const impact = Math.abs(newPrice - currentPrice);
+        const suggestedSlippage = impact + 50;
+        maxSlippagePercent = Math.max(suggestedSlippage, 100);
+      }
+  
+      await onBuyPositionClick(marketId as any, side, amount, maxSlippagePercent);
+  
       // Reset & close
       setIsOpen(false);
       setSide(null);
@@ -162,15 +220,13 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     marketId: number,
     outcome: "YES" | "NO",
     amountUSDC: number,
-    maxSlippageBasisPoints: number, // Already in basis points, don't convert
+    maxSlippageBasisPoints: number,
   ) => {
     if (!account) return;
 
     const USDC_DECIMALS = 6;
     const outcomeValue = outcome === "YES" ? 1 : 2;
-
-    // Don't multiply by 100 since it's already in basis points
-    const maxSlippage = Math.max(maxSlippageBasisPoints, 100); // Minimum 1% slippage
+    const maxSlippage = Math.max(maxSlippageBasisPoints, 100);
 
     try {
       console.log("Max slippage (basis points):", maxSlippage);
@@ -180,7 +236,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
           marketId,
           outcome: outcomeValue,
           amount: convertAmountFromHumanReadableToOnChain(amountUSDC, USDC_DECIMALS),
-          maxSlippage: maxSlippage, // Already in basis points
+          maxSlippage: maxSlippage,
         }),
       );
 
@@ -189,6 +245,16 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       });
 
       queryClient.refetchQueries();
+
+      // Refetch market data after buying
+      const marketDetails = await getMarketDetails(market.id);
+      if (marketDetails) {
+        setMarketDetails(marketDetails as any);
+      }
+
+      const positions: any = await getUserPositionDetails(market.id, account.address.toString());
+      setUserPositions(positions || []);
+
       console.log("Buy position response:", response);
       return response;
     } catch (error) {
@@ -226,25 +292,39 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     return `${days} days left`;
   };
 
-  const handleSellShares = async (position: Position) => {
-    if (!account?.address) return;
-
-    const sellKey = `${position.outcome}-${position.user}`;
-    setSellLoading((prev) => ({ ...prev, [sellKey]: true }));
+  const onSellPositionClick = async (marketId: any, positionId: any, sharesToSell: any, minPrice: number) => {
+    if (!account) return;
 
     try {
-      // Implement your sell shares logic here
-      // await sellUserShares(market.id, position.outcome, position.shares, account.address);
+      const response = await signAndSubmitTransaction(
+        sellPosition({
+          marketId,
+          positionId,
+          sharesToSell,
+          minPrice,
+        }),
+      );
 
-      // Refresh positions after selling
-      const updatedPositions = await getUserPositionDetails(market.id as number, account?.address.toString());
-      setUserPositions(updatedPositions || []);
+      await aptosClient().waitForTransaction({
+        transactionHash: response.hash,
+      });
 
-      console.log(`Selling ${position.shares} shares of outcome ${position.outcome}`);
+      queryClient.refetchQueries();
+
+      // Refetch market data after selling
+      const marketDetails = await getMarketDetails(market.id);
+      if (marketDetails) {
+        setMarketDetails(marketDetails as any);
+      }
+
+      const positions: any = await getUserPositionDetails(market.id, account.address.toString());
+      setUserPositions(positions || []);
+
+      console.log("Sell position response:", response);
+      return response;
     } catch (error) {
-      console.error("Error selling shares:", error);
-    } finally {
-      setSellLoading((prev) => ({ ...prev, [sellKey]: false }));
+      console.error("Error selling position:", error);
+      throw error;
     }
   };
 
@@ -269,15 +349,37 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#232328] p-6">
+      <div className="min-h-screen bg-[#232328]">
+        <header className="sticky top-0 mb-6 bg-[#1a1a1e57] z-40 overflow-hidden animate-fadeInUp border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
+          <div className="max-w-7xl mx-auto px-4 py-2">
+            <div className="flex justify-between items-center px-4 py-2">
+              {/* Logo Section */}
+              <div className="cursor-pointer flex flex-nowrap flex-col" onClick={() => router.push("/")}>
+                <h1 className="text-2xl font-bold text-white">
+                  Pivot<span className="text-cyan-400"></span>
+                </h1>
+                <div className="flex items-center gap-1 text-xs text-gray-400">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  Beta v0.2
+                </div>
+              </div>
+
+              {/* Wallet Connect Section */}
+              <div className="flex gap-2 items-center flex-wrap">
+                <WalletSelector />
+              </div>
+            </div>
+          </div>
+        </header>
+
         <div className="max-w-6xl mx-auto">
           <div className="animate-pulse">
-            <div className="h-8 bg-gray-700 rounded w-1/3 mb-6"></div>
-            <div className="h-64 bg-gray-700 rounded mb-6"></div>
+            <div className="h-8 bg-gray-700 rounded-lg w-1/3 mb-6"></div>
+            <div className="h-64 bg-gray-700 rounded-lg mb-6"></div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="h-32 bg-gray-700 rounded"></div>
-              <div className="h-32 bg-gray-700 rounded"></div>
-              <div className="h-32 bg-gray-700 rounded"></div>
+              <div className="h-32 bg-gray-700 rounded-lg"></div>
+              <div className="h-32 bg-gray-700 rounded-lg"></div>
+              <div className="h-32 bg-gray-700 rounded-lg"></div>
             </div>
           </div>
         </div>
@@ -453,7 +555,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                         value={amountUSDC}
                         onChange={(e) => setAmountUSDC(e.target.value)}
                         className="bg-transparent text-white text-lg font-semibold outline-none min-w-0 flex-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        placeholder="10"
+                        placeholder="5"
                       />
                     </div>
                     <div className="flex -ml-28 gap-2">
@@ -505,7 +607,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                             (calculatePayout(side as any, parseFloat(amountUSDC)) / parseFloat(amountUSDC || "1") - 1) *
                             100
                           ).toFixed(1)
-                        : "954.0"}
+                        : "0"}
                       %
                     </span>
                   </div>
@@ -672,7 +774,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   const outcomeText = position.outcome === 1 ? "YES" : "NO";
                   const outcomeColor = position.outcome === 1 ? "green" : "red";
                   const currentPrice = position.outcome === 1 ? yesPrice : noPrice;
-
+                  console.log("position--", position);
                   return (
                     <div key={index} className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
                       <div className="flex items-start justify-between mb-4">
@@ -692,7 +794,14 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                           </div>
                         </div>
                         <button
-                          onClick={() => handleSellShares(position)}
+                          onClick={() =>
+                            onSellPositionClick(
+                              marketDetails.id,
+                              position.id,
+                              position.shares,
+                              Math.floor(currentPrice * 10000),
+                            )
+                          }
                           disabled={isLoading}
                           className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
                             isLoading
