@@ -42,9 +42,13 @@ const CreateMarket = () => {
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [progress, setProgress] = useState<string>("");
   const [marketProposal, setMarketProposal] = useState<any>("");
-  const [initialLiquidity, setInitialLiquidity] = useState<number>(0);
+  const [initialLiquidity, setInitialLiquidity] = useState<number>(2);
   const [error, setError] = useState("");
+  const [creatingCustomMarket, setCreatingCustomMarket] = useState(false);
   const [suggestedQuestions, setSuggestedQuestions] = useState<any>(null);
+  const [marketCreated, setMarketCreated] = useState(false);
+  const [createdMarketTitle, setCreatedMarketTitle] = useState("");
+
   // New states for suggestions
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -271,7 +275,34 @@ const CreateMarket = () => {
 
   const onStakeClick = async () => {
     if (!account) return;
+    // Add validation for custom markets
+    if (creatingCustomMarket) {
+      if (!marketProposal.question.trim()) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "ai", content: "Please enter a market question before creating the market." },
+        ]);
+        return;
+      }
 
+      if (!marketProposal.category.trim()) {
+        setMessages((prev) => [...prev, { role: "ai", content: "Please enter a category for your market." }]);
+        return;
+      }
+
+      if (!marketProposal.end_date) {
+        setMessages((prev) => [...prev, { role: "ai", content: "Please select an end date for your market." }]);
+        return;
+      }
+
+      if (!marketProposal.resolution_criteria.trim()) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "ai", content: "Please provide resolution criteria for your market." },
+        ]);
+        return;
+      }
+    }
     console.log("marketProposal", marketProposal);
 
     // Extract market details
@@ -280,15 +311,25 @@ const CreateMarket = () => {
     const resolution_criteria =
       marketProposal.resolution_criteria ||
       "This market will be resolved based on official sources and verifiable information at the specified end time.";
-    const endTime = marketProposal.end_date;
     const oracle = "0x4ec842f9be21e687b8ab1eaa770d6ae80b7456f2b31a5c0221b7310095b84396";
 
-    const timePart = endTime?.split("T")[1]; // or however you're extracting timePart
-    const timeComponents = timePart ? timePart.split(":") : ["23", "59", "59"]; // default to end of day
+    // Parse the date string "DD/MM/YYYY HH:mm"
+    const endTime = marketProposal.end_date;
+    let formattedEndTime;
 
-    // Or if you're parsing the full date:
-    const endDate = new Date(endTime + (timePart ? "" : "T23:59:59"));
-    const formattedEndTime = Math.floor(endDate.getTime() / 1000);
+    const [datePart, timePart] = endTime.split(" ");
+    const [day, month, year] = datePart.split("/");
+
+    const isoDateString = `${year}-${month}-${day}T${timePart || "23:59:59"}Z`;
+    const endDate = new Date(isoDateString);
+
+    // Validate date
+    if (isNaN(endDate.getTime())) {
+      throw new Error("Invalid date format");
+    }
+
+    formattedEndTime = Math.floor(endDate.getTime() / 1000) + 86400;
+
     // Validate end time is in the future
     const currentTime = Math.floor(Date.now() / 1000);
     if (formattedEndTime <= currentTime) {
@@ -302,7 +343,7 @@ const CreateMarket = () => {
       ]);
       return;
     }
-
+    console.log("creating market with--", title, description, resolution_criteria, formattedEndTime, initialLiquidity);
     try {
       const response = await signAndSubmitTransaction(
         createMarket({
@@ -331,6 +372,8 @@ const CreateMarket = () => {
           content: `🎉 Market "${title}" created successfully! It's now live for trading.`,
         },
       ]);
+      setMarketCreated(true);
+      setCreatedMarketTitle(title);
 
       setEditingMarket(false);
       setSelectedSuggestion(null);
@@ -698,6 +741,52 @@ const CreateMarket = () => {
                 </div>
               </motion.div>
             ))}
+            {marketCreated && (
+              <motion.div
+                className="mb-8"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+              >
+                <div className="bg-gradient-to-r from-green-600/20 to-emerald-600/20 backdrop-blur-sm border border-green-500/30 rounded-2xl p-8 text-center shadow-lg">
+                  <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle className="w-8 h-8 text-white" />
+                  </div>
+
+                  <h3 className="text-2xl font-bold text-white mb-2">Market Created Successfully!</h3>
+                  <p className="text-green-300 mb-6">"{createdMarketTitle}" is now live and ready for trading.</p>
+
+                  <div className="flex gap-4 justify-center flex-wrap">
+                    <button
+                      onClick={() => router.push("/")}
+                      className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2"
+                    >
+                      <Globe className="w-5 h-5" />
+                      View All Markets
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        // Reset states to create another market
+                        setMarketCreated(false);
+                        setCreatedMarketTitle("");
+                        setEditingMarket(false);
+                        setSelectedSuggestion(null);
+                        setMarketProposal(null);
+                        setCreatingCustomMarket(false);
+                        setMessages([]);
+                        setCurrentStep(0);
+                        setProgress("");
+                      }}
+                      className="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2"
+                    >
+                      <Edit3 className="w-5 h-5" />
+                      Create Another Market
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
             {loading && (
               <motion.div
                 className="flex justify-start"
@@ -708,13 +797,13 @@ const CreateMarket = () => {
                 <div className="bg-gray-800/80 backdrop-blur-sm border border-gray-700/60 rounded-2xl px-6 py-4 mr-12">
                   <div className="flex items-center gap-2 text-gray-400">
                     <div className="flex gap-1">
-                      <div className="w-2 h-2 bg-green-700 rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-slate-700 rounded-full animate-bounce"></div>
                       <div
-                        className="w-2 h-2 bg-green-700 rounded-full animate-bounce"
+                        className="w-2 h-2 bg-slate-700 rounded-full animate-bounce"
                         style={{ animationDelay: "0.1s" }}
                       ></div>
                       <div
-                        className="w-2 h-2 bg-green-700 rounded-full animate-bounce"
+                        className="w-2 h-2 bg-slate-700 rounded-full animate-bounce"
                         style={{ animationDelay: "0.2s" }}
                       ></div>
                     </div>
@@ -818,14 +907,47 @@ const CreateMarket = () => {
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => {
+                      // Hide suggestions and clear input
                       setShowSuggestions(false);
                       setInput("");
+
+                      // Create an empty market proposal template
+                      const emptyMarketProposal = {
+                        title: "",
+                        question: "",
+                        category: "",
+                        end_date: "",
+                        resolution_criteria: "",
+                        description: "",
+                        ai_probability: 0.5, // Default 50%
+                        confidence: 0.7, // Default 70%
+                        sentiment_score: 0.5, // Default neutral
+                        key_factors: [],
+                        context: "Custom market created by user",
+                        sources: [],
+                      };
+
+                      // Set the empty proposal and enable editing mode
+                      setMarketProposal(emptyMarketProposal);
+                      setSelectedSuggestion(null);
+                      setEditingMarket(true);
+                      setCreatingCustomMarket(true);
+
+                      // Update progress
+                      setCurrentStep(2);
+                      setProgress("Creating Custom Market");
+
+                      // Add AI message
                       setMessages((prev) => [
                         ...prev,
-                        { role: "ai", content: "Let's create a custom market! What would you like to predict?" },
+                        {
+                          role: "ai",
+                          content:
+                            "Let's create your custom market! Fill in the details below and I'll help you create a prediction market.",
+                        },
                       ]);
                     }}
-                    className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2"
+                    className="px-4 py-2 bg-gradient-to-b from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2"
                   >
                     <Edit3 className="w-4 h-4" />
                     Create Custom Market
@@ -860,15 +982,28 @@ const CreateMarket = () => {
                       defaultValue={marketProposal?.question || selectedSuggestion?.question || ""}
                       className="w-full bg-[#2f2f35]/70 border border-gray-600/50 rounded-lg p-3 text-gray-100 text-sm resize-none focus:border-green-400 focus:outline-none transition-colors"
                       rows={3}
-                      placeholder="Edit the market question..."
+                      onChange={(e) => {
+                        setMarketProposal((prev: any) => ({
+                          ...prev,
+                          question: e.target.value,
+                          title: e.target.value.slice(0, 100),
+                        }));
+                      }}
+                      placeholder="What would you like people to predict?"
                     />
                   </div>
                   <div>
                     <h4 className="text-sm font-semibold text-green-400 mb-1">Category</h4>
                     <input
                       defaultValue={marketProposal?.category || selectedSuggestion?.category || ""}
+                      onChange={(e) => {
+                        setMarketProposal((prev: any) => ({
+                          ...prev,
+                          category: e.target.value,
+                        }));
+                      }}
                       className="w-full bg-[#2f2f35]/70 border border-gray-600/50 rounded-lg p-3 text-gray-100 text-sm focus:border-green-400 focus:outline-none transition-colors"
-                      placeholder="Edit category..."
+                      placeholder="Category (e.g., Crypto, Sports, Politics, Tech)"
                     />
                   </div>
                   <div>
@@ -912,10 +1047,10 @@ const CreateMarket = () => {
                       <input
                         type="number"
                         min="2"
-                        step="0.01"
+                        step="1"
                         value={initialLiquidity}
                         onChange={handleLiquidityChange}
-                        placeholder={`0`}
+                        placeholder={`2`}
                         className={`
                   w-full bg-[#2f2f35]/70 border ${
                     error ? "border-red-500" : "border-gray-600/50"
@@ -1011,9 +1146,15 @@ const CreateMarket = () => {
                 <h4 className="text-sm font-semibold text-green-400 mb-1">Resolution Criteria</h4>
                 <textarea
                   defaultValue={marketProposal?.resolution_criteria || selectedSuggestion?.resolution_criteria || ""}
+                  onChange={(e) => {
+                    setMarketProposal((prev: any) => ({
+                      ...prev,
+                      resolution_criteria: e.target.value,
+                    }));
+                  }}
                   className="w-full bg-[#2f2f35]/70 border border-gray-600/50 rounded-lg p-3 text-gray-100 text-sm resize-none focus:border-green-400 focus:outline-none transition-colors"
                   rows={3}
-                  placeholder="Edit resolution criteria..."
+                  placeholder="How will this market be resolved? What sources will be used to determine the outcome?"
                 />
               </div>
 
@@ -1032,10 +1173,21 @@ const CreateMarket = () => {
                     setEditingMarket(false);
                     setSelectedSuggestion(null);
                     setMarketProposal(null);
+                    setCreatingCustomMarket(false);
+
+                    // If it was a custom market, go back to welcome state
+                    if (creatingCustomMarket) {
+                      setMessages([]);
+                      setCurrentStep(0);
+                      setProgress("");
+                    } else {
+                      // Otherwise, show suggestions again
+                      setShowSuggestions(true);
+                    }
                   }}
                   className="px-6 py-3 bg-gradient-to-r from-[#2a2a30] to-[#2f2f35] hover:from-[#2f2f35] hover:to-[#323238] text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2"
                 >
-                  🔙 Back to Suggestions
+                  {creatingCustomMarket ? "Cancel" : "Cancel"}
                 </button>
               </div>
             </div>

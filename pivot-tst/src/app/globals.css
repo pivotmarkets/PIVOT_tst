@@ -78,7 +78,8 @@
 
 @layer base {
   html, body {
-    background-color: #1a1a1e57 !important;
+    background-color: #202024 !important;
+    overflow: hidden;
   }
 }
 
