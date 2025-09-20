@@ -1,5 +1,6 @@
 // Internal components
 import { Button } from "@/components/ui/button";
+import { UserCircleIcon, UserIcon } from "@heroicons/react/24/solid";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
@@ -33,6 +34,8 @@ import {
   Circle,
   Copy,
   LogOut,
+  LucideUserCircle,
+  LucideUserCircle2,
   Sparkles,
   User,
   Wallet,
@@ -76,7 +79,7 @@ export function WalletSelector() {
               {/* AI Profile Circle */}
               <div className="relative">
                 <div className="w-6 h-6 rounded-full bg-[#008259] flex items-center justify-center">
-                  <Circle className="h-4 w-4 text-white" />
+                <LucideUserCircle className="h-5 w-5 text-white" />
                 </div>
               </div>
 

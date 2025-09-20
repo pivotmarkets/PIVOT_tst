@@ -15,6 +15,12 @@ interface SellPositionArguments {
   minPrice: number;
 }
 
+interface ClaimWinningsArguments {
+  marketId: any;
+  positionId: any;
+}
+
+
 /**
  * Buy a position in a market
  */
@@ -39,6 +45,20 @@ export const sellPosition = (args: SellPositionArguments): InputTransactionData 
     data: {
       function: `${MODULE_ADDRESS}::pivot_market_pool::sell_position`,
       functionArguments: [marketId, positionId, sharesToSell, minPrice],
+    },
+  };
+};
+
+/**
+ * claim winnings
+ */
+export const claimWinnings = (args: ClaimWinningsArguments): InputTransactionData => {
+  const { marketId, positionId } = args;
+
+  return {
+    data: {
+      function: `${MODULE_ADDRESS}::pivot_market_pool::claim_winnings`,
+      functionArguments: [marketId, positionId],
     },
   };
 };

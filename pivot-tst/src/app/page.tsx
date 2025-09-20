@@ -31,7 +31,48 @@ function getTimeLeft(endTimeEpoch: string) {
   return `${minutes}m`;
 }
 
+// Arc meter component for showing sentiment/odds
+const ArcMeter = ({ percentage, size = 80 }: any) => {
+  const radius = size / 2 - 4;
+  const circumference = Math.PI * radius;
+  const strokeDasharray = circumference;
+  const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+  return (
+    <div className="relative" style={{ width: size, height: size / 2 + 4 }}>
+      {/* Background arc */}
+      <svg width={size} height={size / 2 + 4} className="absolute top-0 left-0">
+        <path
+          d={`M 4 ${size / 2} A ${radius} ${radius} 0 0 1 ${size - 4} ${size / 2}`}
+          fill="none"
+          stroke="#374151"
+          strokeWidth="3"
+          strokeLinecap="round"
+        />
+        {/* Progress arc */}
+        <path
+          d={`M 4 ${size / 2} A ${radius} ${radius} 0 0 1 ${size - 4} ${size / 2}`}
+          fill="none"
+          stroke={percentage >= 50 ? "#10b981" : "#ef4444"}
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeDasharray={strokeDasharray}
+          strokeDashoffset={strokeDashoffset}
+          className="transition-all duration-500"
+        />
+      </svg>
+      {/* Percentage text */}
+      <div className="absolute inset-0 flex items-end justify-center pb-1">
+        <span className={`text-sm font-bold ${percentage >= 50 ? "text-green-400" : "text-red-400"}`}>
+          {percentage.toFixed(1)}%
+        </span>
+      </div>
+    </div>
+  );
+};
+
 const MarketCard = ({ market }: any) => {
+  const yesPercentage = market.yesPrice * 100;
   const router = useRouter();
 
   const handleMarketClick = () => {
@@ -45,65 +86,37 @@ const MarketCard = ({ market }: any) => {
     router.push(`/market/${slug}/${market.id}`);
   };
 
-  const getStatusColor = (status: any) => {
-    switch (status) {
-      case "Live":
-        return "bg-green-500 text-white";
-      case "Resolved":
-        return "bg-gray-500 text-white";
-      default:
-        return "bg-blue-500 text-white";
-    }
-  };
-
   return (
     <div
-      className="bg-[#2f2f33]/60 border border-gray-700/50 rounded-xl p-6  hover:shadow-lg transition-all duration-300 cursor-pointer group animate-fadeInUp"
+      className="bg-[#2f2f33] border border-gray-700/30 rounded-2xl p-6 hover:border-[#666667] transition-all duration-300 cursor-pointer group h-full flex flex-col"
       onClick={handleMarketClick}
     >
-      {/* Header */}
-      <div className="flex items-start justify-between mb-4">
+      {/* Header with title and arc meter */}
+      <div className="flex items-start justify-between mb-6">
         <div className="flex-1 pr-4">
-          <h3 className="text-white font-semibold text-xl transition-colors">{market.title}</h3>
-          <p className="text-gray-400 text-sm line-clamp-2">{market.description}</p>
+          <h3 className="text-white text-wrap font-semibold text-lg leading-tight truncate">{market.title}</h3>
         </div>
-        <span
-          className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(
-            market.status,
-          )} shadow-sm`}
-        >
-          {market.status}
-        </span>
+        <ArcMeter percentage={yesPercentage} />
       </div>
 
-      {/* Market Info */}
-      <div className="mb-4">
-        <div className="text-lg font-bold text-blue-400 mb-1">
-          {market.minBet} {market.maxBet}
-        </div>
-        <div className="text-sm text-gray-400">{market.type}</div>
-      </div>
-
-      {/* Price Display */}
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
+      {/* YES/NO buttons with prices */}
+      <div
+        className={`grid grid-cols-2 gap-3 mb-6 ${
+          market.title.length < 50 ? "mt-6" : market.title.length < 100 ? "mt-3" : "mt-0"
+        }`}
+      >
+        <button className="bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 rounded-xl py-3 px-4 transition-all duration-200 h-[4.5rem] flex flex-col justify-center">
           <div className="text-green-400 text-sm font-medium mb-1">YES</div>
-          <div className="text-green-300 text-xl font-bold">{(market.yesPrice * 100).toFixed(0)}%</div>
-          <div className="text-green-400/70 text-xs">
-            {market.trend === "up" ? "↗" : "↘"} {Math.round(market.confidence * 100)}%
-          </div>
-        </div>
-        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+          <div className="text-green-300 text-lg font-bold">{(market.yesPrice * 100).toFixed(0)}%</div>
+        </button>
+        <button className="bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-xl py-3 px-4 transition-all duration-200 h-[4.5rem] flex flex-col justify-center">
           <div className="text-red-400 text-sm font-medium mb-1">NO</div>
-          <div className="text-red-300 text-xl font-bold">{(market.noPrice * 100).toFixed(0)}%</div>
-          <div className="text-red-400/70 text-xs">
-            {market.trend === "down" ? "↗" : "↘"} {100 - Math.round(market.confidence * 100)}%
-          </div>
-        </div>
+          <div className="text-red-300 text-lg font-bold">{(market.noPrice * 100).toFixed(0)}%</div>
+        </button>
       </div>
 
       {/* Stats */}
-      <div className="flex justify-between items-center text-sm text-gray-300">
+      <div className="flex justify-between items-center text-sm text-gray-300 mt-auto">
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1">
             <DollarSign className="w-4 h-4 text-gray-400" />
@@ -111,27 +124,14 @@ const MarketCard = ({ market }: any) => {
           </span>
           <span className="flex items-center gap-1">
             <Users className="w-4 h-4 text-gray-400" />
-            {market.participants.toLocaleString()}
+            {market.participants?.toLocaleString() || "0"}
           </span>
         </div>
         <span className="flex items-center gap-1">
           <Clock className="w-4 h-4 text-gray-400" />
-          {market.timeLeft}
+          {market.timeLeft || "30d left"}
         </span>
       </div>
-      {/* <button
-        onClick={() =>
-          onSellPositionClick(
-            0, // marketId
-            2, // positionId
-            2000000, // 2 USDC worth of shares
-            3200, // minPrice (0.32 USDC per share, slightly above current price)
-          )
-        }
-        className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg"
-      >
-        Sell
-      </button> */}
     </div>
   );
 };
@@ -186,7 +186,7 @@ export default function PivotMarketApp() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [selectedMarket, setSelectedMarket] = useState<any>(null);
-
+  const [loading, setLoading] = useState(true);
   const { account } = useWallet();
 
   // Get market details
@@ -309,11 +309,11 @@ export default function PivotMarketApp() {
 
       {/* Header */}
       <header className="bg-[#1a1a1e57] sticky top-0 z-40 overflow-hidden animate-fadeInUp border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
-        <div className="max-w-7xl mx-auto px-6 py-5">
+        <div className="max-w-7xl mx-auto px-6 py-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
               <h1 className="text-2xl font-bold text-white">
-                Pivot<span className="text-blue-400"></span>
+                <img src="/icons/logo.png" alt="Pivot Logo" className="ml-2 h-16 w-16 text-blue-400" />
               </h1>
             </div>
 
@@ -402,7 +402,7 @@ export default function PivotMarketApp() {
                   <select
                     value={selectedStatus}
                     onChange={(e) => setSelectedStatus(e.target.value)}
-                    className="bg-[#2f2f33] border border-gray-700/50 rounded-lg px-3 py-2 pr-8 text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+                    className="bg-[#2f2f33] border border-gray-700/50 rounded-lg px-3 py-3 pr-8 text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
                   >
                     {statusFilters.map((status) => (
                       <option key={status} value={status}>
@@ -438,10 +438,17 @@ export default function PivotMarketApp() {
         {/* Markets Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           {filteredMarkets.map((rawMarket: any, index) => {
-            // Determine market status
-            const currentTime = new Date("2025-09-12T20:00:00+01:00").getTime() / 1000;
+            const currentTime = Date.now() / 1000; // current epoch time
             const endTime = parseInt(rawMarket.endTime);
-            const status = rawMarket.resolved || currentTime >= endTime ? "Resolved" : "Live";
+
+            let status: "Live" | "Closed" | "Resolved";
+            if (rawMarket.resolved) {
+              status = "Resolved";
+            } else if (currentTime >= endTime) {
+              status = "Closed";
+            } else {
+              status = "Live";
+            }
 
             const transformedMarket = {
               ...rawMarket,
@@ -452,13 +459,13 @@ export default function PivotMarketApp() {
                 currency: "USD",
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
-              }), // "12000000" → "$12.00"
+              }),
               participants: parseInt(rawMarket.participantCount),
-              confidence: 0.5, // Placeholder, maybe calculated later
-              trend: "up", // Placeholder
-              minBet: "", // Placeholder
-              maxBet: "", // Placeholder
-              type: "", // Placeholder
+              confidence: 0.5,
+              trend: "up",
+              minBet: "",
+              maxBet: "",
+              type: "",
               timeLeft: getTimeLeft(rawMarket.endTime),
               status,
             };
@@ -471,8 +478,57 @@ export default function PivotMarketApp() {
           })}
         </div>
 
-        {/* Empty State */}
         {filteredMarkets.length === 0 && (
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    {[1, 2, 3, 4, 5, 6].map((index) => (
+      <div
+        key={index}
+        className="bg-[#2f2f33] border border-gray-700/30 rounded-2xl p-6 animate-pulse"
+      >
+        {/* Header skeleton */}
+        <div className="flex items-start justify-between mb-6">
+          <div className="flex-1 pr-4">
+            <div className="h-6 bg-gray-700/50 rounded mb-2"></div>
+            <div className="h-4 bg-gray-700/30 rounded w-3/4"></div>
+          </div>
+          {/* Arc meter skeleton */}
+          <div className="w-16 h-8 bg-gray-700/50 rounded-full"></div>
+        </div>
+
+        {/* YES/NO buttons skeleton */}
+        <div className="grid grid-cols-2 gap-3 mb-6 mt-3">
+          <div className="bg-gray-700/20 border border-gray-700/30 rounded-xl py-3 px-4 h-[4.5rem] flex flex-col justify-center">
+        
+          </div>
+          <div className="bg-gray-700/20 border border-gray-700/30 rounded-xl py-3 px-4 h-[4.5rem] flex flex-col justify-center">
+            
+          </div>
+        </div>
+
+        {/* Stats skeleton */}
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1">
+              <div className="w-4 h-4 bg-gray-700/50 rounded"></div>
+              <div className="h-4 bg-gray-700/50 rounded w-16"></div>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-4 h-4 bg-gray-700/50 rounded"></div>
+              <div className="h-4 bg-gray-700/50 rounded w-12"></div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-gray-700/50 rounded"></div>
+            <div className="h-4 bg-gray-700/50 rounded w-16"></div>
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+)}
+
+        {/* Empty State */}
+        {account && filteredMarkets.length === 0 && (
           <div className="text-center py-12 animate-fadeInUp">
             <Target className="w-16 h-16 text-gray-600 mx-auto mb-4" />
             <h3 className="text-xl font-medium text-white mb-2">No markets found</h3>
