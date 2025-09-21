@@ -1,22 +1,15 @@
-"use client";
-
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { Activity, BarChart3, Minus, Wallet, ArrowUp, ArrowDown, Trophy, DollarSign, Heart, Users, CandlestickChart, BaggageClaim, DollarSignIcon } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
 import {
-  ArrowLeft,
-  DollarSign,
-  Users,
-  Clock,
-  TrendingUp,
-  TrendingDown,
-  Activity,
-  BarChart3,
-  Minus,
-  Wallet,
-  ArrowUp,
-  ArrowDown,
-  Trophy,
-} from "lucide-react";
-import { getMarketDetails, getUserPositionDetails } from "@/app/view-functions/markets";
+  formatTimestamp,
+  getLatestTrades,
+  getMarketAnalytics,
+  getMarketDetails,
+  getUserPositionDetails,
+  TradeRecord,
+  UserPosition,
+} from "@/app/view-functions/markets";
 import { WalletSelector } from "./WalletSelector";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
@@ -74,6 +67,8 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [side, setSide] = useState<"YES" | "NO" | null>(null);
   const [amountUSDC, setAmountUSDC] = useState("5");
+  const [selectedTimeFilter, setSelectedTimeFilter] = useState("ALL");
+  const [priceHistory, setPriceHistory] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "positions" | "activity">("overview");
@@ -91,10 +86,10 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       try {
         // 1. Fetch market details
         const marketDetails = await getMarketDetails(market.id);
+        fetchPriceHistory();
         if (marketDetails) {
           setMarketDetails(marketDetails as any);
         }
-        console.log("Market details:", marketDetails);
 
         // 2. Fetch user positions if wallet connected
         const positions: any = await getUserPositionDetails(market.id, account.address.toString());
@@ -134,6 +129,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         try {
           if (isMarketDetailsMissing) {
             const marketDetails = await getMarketDetails(market.id);
+            fetchPriceHistory();
             if (marketDetails) {
               setMarketDetails(marketDetails as any);
             }
@@ -249,6 +245,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
       // Refetch market data after buying
       const marketDetails = await getMarketDetails(market.id);
+      fetchPriceHistory();
       if (marketDetails) {
         setMarketDetails(marketDetails as any);
       }
@@ -261,6 +258,45 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     } catch (error) {
       console.error("Error buying position:", error);
       throw error;
+    }
+  };
+
+   const transformTradeRecordsToProbabilityChart = (
+    trades: TradeRecord[]
+  ): Array<{date: string, time: string, yesPrice: number, noPrice: number, timestamp: number}> => {
+    if (!trades || trades.length === 0) {
+      return [];
+    }
+  
+    return trades.map((trade, index) => {
+      const yesPriceAfter = parseFloat(trade.yesPriceAfter) / 100; 
+      const noPriceAfter = parseFloat(trade.noPriceAfter) / 100;   
+      
+      const timestamp = parseInt(trade.timestamp);
+      const date = new Date(timestamp * 1000);
+      
+      // Handle invalid timestamps
+      const validDate = isNaN(date.getTime()) ? new Date() : date;
+      
+      return {
+        date: validDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        time: validDate.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' }),
+        yesPrice: Math.max(0, Math.min(100, yesPriceAfter)), 
+        noPrice: Math.max(0, Math.min(100, noPriceAfter)),   
+        timestamp: timestamp || Date.now() / 1000
+      };
+    }).sort((a, b) => a.timestamp - b.timestamp); 
+  };
+
+  // function to fetch price history
+  const fetchPriceHistory = async () => {
+    try {
+      const trades = await getLatestTrades(parseFloat(market.id), 100);
+      console.log("trades:", trades);
+      const history = transformTradeRecordsToProbabilityChart(trades);
+      setPriceHistory(history as any);
+    } catch (error) {
+      console.error("Error fetching price history:", error);
     }
   };
 
@@ -314,6 +350,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
       // Refetch market data after selling
       const marketDetails = await getMarketDetails(market.id);
+      fetchPriceHistory();
       if (marketDetails) {
         setMarketDetails(marketDetails as any);
       }
@@ -331,7 +368,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
   const onClaimWinningsClick = async (marketId: any, positionId: any) => {
     if (!account) return;
-  
+
     try {
       const response = await signAndSubmitTransaction(
         claimWinnings({
@@ -339,22 +376,23 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
           positionId,
         }),
       );
-  
+
       await aptosClient().waitForTransaction({
         transactionHash: response.hash,
       });
-  
+
       queryClient.refetchQueries();
-  
+
       // Refetch market data after claiming
       const marketDetails = await getMarketDetails(market.id);
+      fetchPriceHistory();
       if (marketDetails) {
         setMarketDetails(marketDetails as any);
       }
-  
+
       const positions: any = await getUserPositionDetails(market.id, account.address.toString());
       setUserPositions(positions || []);
-  
+
       console.log("Claim winnings response:", response);
       return response;
     } catch (error) {
@@ -362,7 +400,6 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       throw error;
     }
   };
-  
 
   const calculatePositionValue = (position: Position): number => {
     if (!marketDetails) return 0;
@@ -383,6 +420,22 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     return { value: pnlValue, percentage: pnlPercentage };
   };
 
+  const transformTradeRecordsToChart = (trades: any) => {
+    return trades.map((trade: { yesPriceAfter: string; noPriceAfter: string; timestamp: string }) => {
+      const yesPrice = formatPrice(trade.yesPriceAfter);
+      const noPrice = formatPrice(trade.noPriceAfter);
+      const date = formatTimestamp(trade.timestamp);
+
+      return {
+        date: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        time: date.toLocaleDateString("en-US", { weekday: "short", day: "numeric" }),
+        yesPrice: yesPrice,
+        noPrice: noPrice,
+        timestamp: parseInt(trade.timestamp),
+      };
+    });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#232328]">
@@ -392,8 +445,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
               {/* Logo Section */}
               <div className="cursor-pointer flex flex-nowrap flex-col" onClick={() => router.push("/")}>
                 <h1 className="text-2xl font-bold text-white">
-                <img src="/icons/logo.png" alt="Pivot Logo" className="ml-2 h-16 w-16 text-blue-400" />
-             
+                  <img src="/icons/logo.png" alt="Pivot Logo" className="ml-2 h-16 w-16 text-blue-400" />
                 </h1>
               </div>
 
@@ -435,6 +487,37 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     return outcome.vec === "0x01" ? "YES" : "NO";
   };
 
+   // Determine which outcome is dominating
+   const isDominatingYes = market.yesPrice > market.noPrice;
+   const dominatingOutcome = isDominatingYes ? 'YES' : 'NO';
+   
+   // Transform data to show only the dominating outcome
+ 
+
+  // Custom Tooltip component
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      const color = isDominatingYes ? '#10b981' : '#ef4444';
+      
+      return (
+        <div className="bg-gray-800 border border-gray-700 p-3 rounded-lg shadow-xl">
+          <p className="text-gray-300 text-sm font-medium mb-2">{data.time}</p>
+          <div className="flex items-center gap-2">
+            <div 
+              className="w-3 h-3 rounded-sm" 
+              style={{ backgroundColor: color }}
+            ></div>
+            <p className="text-sm" style={{ color }}>
+              {dominatingOutcome}: {payload[0].value.toFixed(1)}%
+            </p>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
   const resolutionOutcome = marketDetails.resolved ? getResolutionOutcome(marketDetails.outcome) : null;
 
   const yesPrice = formatPrice(marketDetails.yesPrice);
@@ -457,10 +540,8 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
             {/* Logo Section */}
             <div className="cursor-pointer flex flex-nowrap flex-col" onClick={() => router.push("/")}>
               <h1 className="text-2xl font-bold text-white">
-              <img src="/icons/logo.png" alt="Pivot Logo" className="ml-2 h-16 w-16 text-blue-400" />
-             
+                <img src="/icons/logo.png" alt="Pivot Logo" className="ml-2 h-16 w-16 text-blue-400" />
               </h1>
-            
             </div>
 
             {/* Wallet Connect Section */}
@@ -471,66 +552,174 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto pb-6">
+      <div className="max-w-6xl mx-auto mb-5 pb-6">
         {/* Market Info Card */}
-        <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6 mb-6">
-          <div className="flex justify-between items-start mb-4">
-            <div className="flex-1">
-              <h2 className="text-2xl font-bold text-white mb-2">{marketDetails.title}</h2>
-              <p className="text-gray-400 text-base leading-relaxed">{marketDetails.description}</p>
-              <p className="text-gray-500 text-sm mt-2 leading-relaxed">{marketDetails.resolutionCriteria}</p>
-            </div>
-            <span
-              className={`px-3 py-2 rounded-full text-sm font-semibold ${
-                marketDetails.resolved
-                  ? resolutionOutcome === "YES"
-                    ? "bg-green-500 text-white"
-                    : "bg-red-500 text-white"
-                  : isClosed
-                    ? "bg-blue-500 text-white"
-                    : "bg-[#008259] text-white"
-              }`}
-            >
-              {marketDetails.resolved ? `Resolved ${resolutionOutcome}` : isClosed ? "Closed" : "Live"}
-            </span>
-          </div>
+       {/* Market Info Card - Updated to show only dominating outcome */}
+       <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl mb-5 p-6">
+  {/* Market Header Section */}
+  <div className="mb-6">
+    {/* Creator info */}
+    <div className="flex items-center gap-3 mb-4">
+      <img 
+        src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=32&h=32&fit=crop&crop=face" 
+        alt="Creator" 
+        className="w-8 h-8 rounded-full"
+      />
+      <span className="text-gray-400">{marketDetails.creator}</span>
+      <span className="text-blue-400 text-sm">👑</span>
+    </div>
+    
+    {/* Market title */}
+    <h1 className="text-2xl md:text-3xl font-bold text-white mb-4">
+      {marketDetails.title}
+    </h1>
+    
+    {/* Market stats row */}
+    <div className="flex items-center gap-3 text-gray-400 text-sm mb-6">
+      <div className="flex items-center gap-1">
+        <Users className="w-4 h-4" />
+        <span>{marketDetails.participantCount}</span>
+      </div>
+      <div className="flex items-center gap-1">
+        <DollarSignIcon className="w-4 h-4" />
+        <span>{(Number(market.totalValueLocked) / 1e6).toLocaleString()}</span>
+      </div>
+      <div className="flex items-center gap-2">
+      <CandlestickChart className="w-4 h-4 text-gray-400" />
+        <span> {(Number(market.totalVolume) / 1e6).toLocaleString()} USDC</span>
+      </div>
+      <span className="text-gray-500">
+        {marketDetails.resolved 
+          ? `resolved ${new Date(parseInt(marketDetails.endTime) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` 
+          : `${getTimeLeft(marketDetails.endTime)}`
+        }
+      </span>
+    </div>
 
-          {/* Price Display - Updated with real data */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-green-400 font-medium">YES</span>
-                <TrendingUp className="w-5 h-5 text-green-400" />
-              </div>
-              <div className="text-3xl font-bold text-green-300 mb-1">{(yesPrice * 100).toFixed(1)}%</div>
-              <div className="text-green-400/70 text-sm">{formatCurrency(marketDetails.yesPoolValue)} pool</div>
-            </div>
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-red-400 font-medium">NO</span>
-                <TrendingDown className="w-5 h-5 text-red-400" />
-              </div>
-              <div className="text-3xl font-bold text-red-300 mb-1">{(noPrice * 100).toFixed(1)}%</div>
-              <div className="text-red-400/70 text-sm">{formatCurrency(marketDetails.noPoolValue)} pool</div>
-            </div>
-          </div>
+    {/* Current probability display */}
+    <div className="flex items-center gap-4 mb-6">
+      <div className="flex items-center gap-2">
+        <span 
+          className={`text-4xl md:text-5xl font-bold ${yesPrice > noPrice ? 'text-green-400' : 'text-red-400'}`}
+        >
+          {yesPrice > noPrice ? (yesPrice * 100).toFixed(0) : (noPrice * 100).toFixed(0)}%
+        </span>
+        <span className="text-gray-400 text-lg">chance</span>
+      </div>
+      
+      {/* Price change indicator */}
+      <div className="flex items-center gap-1 text-sm">
+        {/* You can add price change calculation here */}
+        <span className="text-red-400">↓13</span>
+      </div>
+    </div>
+  </div>
 
-          {/* Market Stats - Updated with real data */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-            <div className="flex items-center gap-2 text-gray-300">
-              <DollarSign className="w-4 h-4 text-gray-400" />
-              <span>TVL: {formatCurrency(marketDetails?.totalValueLocked)}</span>
-            </div>
-            <div className="flex items-center gap-2 text-gray-300">
-              <Users className="w-4 h-4 text-gray-400" />
-              <span>{marketDetails.participantCount} Holders</span>
-            </div>
-            <div className="flex items-center gap-2 text-gray-300">
-              <Clock className="w-4 h-4 text-gray-400" />
-              <span>{getTimeLeft(marketDetails.endTime)}</span>
-            </div>
-          </div>
-        </div>
+  {/* Time filter buttons - positioned top right */}
+  <div className="flex justify-end mb-4">
+    <div className="flex bg-gray-800 rounded-lg p-1">
+      {["1H", "6H", "1D", "1W", "1M", "ALL"].map((filter) => (
+        <button
+          key={filter}
+          onClick={() => setSelectedTimeFilter(filter)}
+          className={`px-3 py-1 text-sm rounded-md transition-colors ${
+            selectedTimeFilter === filter 
+              ? "bg-emerald-500 text-white" 
+              : "text-gray-400 hover:text-white"
+          }`}
+        >
+          {filter}
+        </button>
+      ))}
+    </div>
+  </div>
+
+  {/* Chart */}
+  <div className="h-80">
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={priceHistory} margin={{ top: 10, right: 30, left: 20, bottom: 20 }}>
+        <defs>
+          <linearGradient id="yesGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
+            <stop offset="50%" stopColor="#10b981" stopOpacity={0.2} />
+            <stop offset="100%" stopColor="#10b981" stopOpacity={0.05} />
+          </linearGradient>
+          <linearGradient id="noGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ef4444" stopOpacity={0.4} />
+            <stop offset="50%" stopColor="#ef4444" stopOpacity={0.2} />
+            <stop offset="100%" stopColor="#ef4444" stopOpacity={0.05} />
+          </linearGradient>
+        </defs>
+        
+        <CartesianGrid 
+          strokeDasharray="1 1" 
+          stroke="#374151" 
+          horizontal={true} 
+          vertical={false} 
+        />
+
+        <XAxis 
+          dataKey="time" 
+          tick={{ fill: "#9CA3AF", fontSize: 12 }} 
+          axisLine={false} 
+          tickLine={false} 
+        />
+
+        <YAxis
+          domain={[0, 100]}
+          tick={{ fill: "#9CA3AF", fontSize: 12 }}
+          axisLine={false}
+          tickLine={false}
+          tickFormatter={(value) => `${value}%`}
+        />
+
+        <Tooltip content={<CustomTooltip />} />
+
+        {/* Show only the dominating outcome */}
+        <Area
+          type="stepAfter"
+          dataKey={yesPrice > noPrice ? "yesPrice" : "noPrice"}
+          stroke={yesPrice > noPrice ? "#10b981" : "#ef4444"}
+          strokeWidth={2}
+          fill={yesPrice > noPrice ? "url(#yesGradient)" : "url(#noGradient)"}
+          dot={false}
+          activeDot={{ 
+            r: 4, 
+            fill: yesPrice > noPrice ? "#10b981" : "#ef4444", 
+            stroke: "#2f2f33", 
+            strokeWidth: 2 
+          }}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  </div>
+
+  {/* Current Dominating Price Indicator */}
+  <div className="mt-4">
+    <div 
+      className={`flex items-center justify-between p-4 rounded-lg border ${
+        yesPrice > noPrice 
+          ? 'bg-green-500/10 border-green-500/20' 
+          : 'bg-red-500/10 border-red-500/20'
+      }`}
+    >
+      <span 
+        className={`text-2xl font-bold ${yesPrice > noPrice ? 'text-green-400' : 'text-red-400'}`}
+      >
+        {yesPrice > noPrice ? (yesPrice * 100).toFixed(1) : (noPrice * 100).toFixed(1)}%
+      </span>
+    </div>
+    
+    {/* Additional context */}
+    <div className="mt-2 text-center">
+      <span className="text-gray-500 text-sm">
+        Market confidence: {Math.abs((yesPrice - noPrice) * 100).toFixed(1)}% spread
+      </span>
+    </div>
+  </div>
+</div>
+
+
         {/* Action Buttons */}
         {!marketDetails.resolved && !isClosed && (
           <div className="grid grid-cols-1 mb-6 md:grid-cols-2 gap-4">
@@ -826,9 +1015,9 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   const outcomeText = position.outcome === 1 ? "YES" : "NO";
                   const outcomeColor = position.outcome === 1 ? "green" : "red";
                   const currentPrice = position.outcome === 1 ? yesPrice : noPrice;
-                  console.log("current price", currentPrice)
+                  console.log("current price", currentPrice);
                   // Helper function to get resolution outcome
-                  const getResolutionOutcome = (outcome: { vec: any; }) => {
+                  const getResolutionOutcome = (outcome: { vec: any }) => {
                     if (!outcome || !outcome.vec) return null;
                     return outcome.vec === "0x01" ? 1 : 0; // 1 for YES, 0 for NO
                   };

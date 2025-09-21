@@ -777,7 +777,7 @@ const CreateMarket = () => {
               transition={{ duration: 0.8, delay: 0.6 }}
             >
               <p className="text-sm text-gray-400 mb-3 font-medium">
-                Or, enter a prompt to get high-quality AI-generated markets
+                Or, enter a prompt to get high-quality AI-suggested markets
               </p>
               <div
                 className="flex flex-nowrap gap-4 overflow-x-auto lg:overflow-x-hidden lg:justify-between pb-4"
@@ -856,9 +856,9 @@ const CreateMarket = () => {
                   <div className="flex gap-4 justify-center flex-wrap">
                     <button
                       onClick={() => router.push("/")}
-                      className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2"
+                      className="px-8 py-3 bg-white text-black rounded-xl font-medium transition-all duration-200 flex items-center gap-2"
                     >
-                      <Globe className="w-5 h-5" />
+                      <Globe className="w-5 h-5 text-black" />
                       View All Markets
                     </button>
 

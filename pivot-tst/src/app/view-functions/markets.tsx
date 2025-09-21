@@ -1,6 +1,32 @@
 import { MODULE_ADDRESS, COIN_TYPE } from "@/constants";
 import { aptosClient } from "@/utils/aptosClient";
 
+// TradeRecord structure for price history and trade history
+export interface TradeRecord {
+  tradeId: string;
+  user: string;
+  tradeType: number; // 1=BUY, 2=SELL, 3=ADD_LIQ, 4=REMOVE_LIQ, 5=CLAIM, 6=RESOLVE
+  outcome: number | null; // 1=YES, 2=NO, null for liquidity ops
+  amount: string;
+  shares: string | null;
+  price: string;
+  yesPriceBefore: string;
+  noPriceBefore: string;
+  yesPriceAfter: string;
+  noPriceAfter: string;
+  timestamp: string;
+  gasUsed: string | null;
+}
+
+// Market analytics summary
+export interface MarketAnalytics {
+  totalVolume: string;
+  totalTrades: string;
+  yesVolume: string;
+  noVolume: string;
+  liquidityVolume: string;
+  uniqueTraderCount: string;
+}
 // Type definitions for return values
 export interface UserPosition {
   user: string;
@@ -33,20 +59,19 @@ export interface MarketDetails {
 }
 
 export interface MarketSummary {
-  category: string;
-  status: string;
-  volume: any;
-  participants: any;
-  timeLeft: any;
   id: string;
   title: string;
   description: string;
   endTime: string;
+  resolved: boolean;
   yesPrice: string;
   noPrice: string;
-  participantCount: string;
   totalValueLocked: string;
-  resolved: boolean;
+  participantCount: string;
+  totalVolume: string;
+  timeLeft: string;
+  category: string;
+  status: string;
 }
 
 interface Position {
@@ -77,7 +102,7 @@ export const getUserPositions = async (marketId: number, userAddress: string): P
   try {
     const response = await aptosClient().view<string[][]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_pool::get_user_positions`,
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_user_positions`,
         functionArguments: [marketId.toString(), userAddress],
       },
     });
@@ -103,7 +128,7 @@ export const getUserPositionDetails = async (marketId: number, userAddress: stri
       positionIds.map((positionId) =>
         aptosClient().view<[string, string, string, string, string]>({
           payload: {
-            function: `${MODULE_ADDRESS}::pivot_market_pool::get_position`,
+            function: `${MODULE_ADDRESS}::pivot_market_sum::get_position`,
             functionArguments: [marketId.toString(), positionId.toString()],
           },
         }),
@@ -142,7 +167,7 @@ export const getMarketTotalValueLocked = async (marketId: number): Promise<numbe
 
     const response = await aptosClient().view<string[]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_pool::get_market_total_value_locked`,
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_market_total_value_locked`,
         functionArguments: [marketId.toString()],
       },
     });
@@ -159,7 +184,7 @@ export const getMarketPoolBalances = async (marketId: number): Promise<MarketPoo
   try {
     const response = await aptosClient().view<string[]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_pool::get_market_pool_balances`,
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_market_pool_balances`,
         functionArguments: [marketId.toString()],
       },
     });
@@ -182,7 +207,7 @@ export const getAllMarketsWithTvl = async (): Promise<{ marketIds: number[]; tvl
   try {
     const response = await aptosClient().view<[string[], string[]]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_pool::get_all_markets_with_tvl`,
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_all_markets_with_tvl`,
         functionArguments: [],
       },
     });
@@ -203,7 +228,7 @@ export const getPlatformStats = async (): Promise<PlatformStats> => {
   try {
     const response = await aptosClient().view<string[]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_pool::get_platform_stats`,
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_platform_stats`,
         functionArguments: [],
       },
     });
@@ -250,7 +275,7 @@ export const getMarketDetails = async (marketId: number): Promise<MarketDetails 
       ]
     >({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_pool::get_market_details`,
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_market_details`,
         functionArguments: [marketId.toString()],
       },
     });
@@ -291,7 +316,7 @@ export const getAllMarketIds = async (
   try {
     const response = await aptosClient().view<[string[]]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_pool::get_all_market_ids`,
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_all_market_ids`,
         functionArguments: [],
       },
     });
@@ -314,7 +339,7 @@ export const getMarketsPaginated = async (
   try {
     const response = await aptosClient().view<[string[]]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_pool::get_markets_paginated`,
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_markets_paginated`,
         typeArguments: [coinType],
         functionArguments: [offset.toString(), limit.toString()],
       },
@@ -330,7 +355,7 @@ export const getMarketsPaginated = async (
 /**
  * Get basic market info for listing (lighter version)
  */
-export const getMarketSummary = async (marketId: number): Promise<any | null> => {
+export const getMarketSummary = async (marketId: number): Promise<MarketSummary | null> => {
   try {
     const response = await aptosClient().view<
       [
@@ -343,13 +368,18 @@ export const getMarketSummary = async (marketId: number): Promise<any | null> =>
         string, // no_price
         string, // total_value_locked
         string, // participant_count
+        string, // total_volume
       ]
     >({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_pool::get_market_summary`,
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_market_summary`,
         functionArguments: [marketId.toString()],
       },
     });
+
+    const currentTime = Math.floor(Date.now() / 1000); // Current time in seconds
+    const endTime = Number(response[3]);
+    const timeLeft = response[4] || currentTime >= endTime ? "0" : (endTime - currentTime).toString();
 
     return {
       id: response[0],
@@ -361,6 +391,10 @@ export const getMarketSummary = async (marketId: number): Promise<any | null> =>
       noPrice: response[6],
       totalValueLocked: response[7],
       participantCount: response[8],
+      totalVolume: response[9],
+      timeLeft,
+      category: "General", // Placeholder, set based on your app's logic
+      status: response[4] ? "Resolved" : currentTime < endTime ? "Active" : "Ended",
     };
   } catch (error: any) {
     console.error("Error getting market summary:", error);
@@ -430,7 +464,7 @@ export const getPositionDetails = async (
       ]
     >({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_pool::get_user_positions`,
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_user_positions`,
         typeArguments: [coinType],
         functionArguments: [marketId.toString(), positionId.toString()],
       },
@@ -462,7 +496,7 @@ export const getMarketCreationParams = async (
   try {
     const response = await aptosClient().view<[string, string, string]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_pool::get_market_creation_params`,
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_market_creation_params`,
         typeArguments: [coinType],
         functionArguments: [],
       },
@@ -486,7 +520,7 @@ export const getMarketCount = async (coinType: string = "0x1::aptos_coin::AptosC
   try {
     const response = await aptosClient().view<[string]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_pool::get_market_count`,
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_market_count`,
         typeArguments: [coinType],
         functionArguments: [],
       },
@@ -521,6 +555,247 @@ export const getUserPositionsWithDetails = async (
   } catch (error: any) {
     console.error("Error getting user positions with details:", error);
     return [];
+  }
+};
+
+/**
+ * Get market analytics (total volume, trades, etc.)
+ */
+export const getMarketAnalytics = async (marketId: number): Promise<MarketAnalytics | null> => {
+  try {
+    const response = await aptosClient().view<string[]>({
+      payload: {
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_market_analytics`,
+        functionArguments: [marketId.toString()],
+      },
+    });
+    console.log("Raw response from get_market_analytics:", response);
+
+    const [totalVolume, totalTrades, yesVolume, noVolume, liquidityVolume, uniqueTraderCount] = response;
+    return {
+      totalVolume,
+      totalTrades,
+      yesVolume,
+      noVolume,
+      liquidityVolume,
+      uniqueTraderCount,
+    };
+  } catch (error: any) {
+    console.error("Error getting market analytics:", error);
+    return null;
+  }
+};
+
+/**
+ * Get daily trading volume for a specific market and day
+ * @param marketId The market ID
+ * @param dayTimestamp Timestamp (in seconds) of the day (midnight UTC)
+ */
+export const getDailyVolume = async (marketId: number, dayTimestamp: number): Promise<string> => {
+  try {
+    const response = await aptosClient().view<[string]>({
+      payload: {
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_daily_volume`,
+        functionArguments: [marketId.toString(), dayTimestamp.toString()],
+      },
+    });
+    console.log("Raw response from get_daily_volume:", response);
+
+    return response[0];
+  } catch (error: any) {
+    console.error("Error getting daily volume:", error);
+    return "0";
+  }
+};
+
+/**
+ * Get hourly trading volume for a specific market and hour
+ * @param marketId The market ID
+ * @param hourTimestamp Timestamp (in seconds) of the hour
+ */
+export const getHourlyVolume = async (marketId: number, hourTimestamp: number): Promise<string> => {
+  try {
+    const response = await aptosClient().view<[string]>({
+      payload: {
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_hourly_volume`,
+        functionArguments: [marketId.toString(), hourTimestamp.toString()],
+      },
+    });
+    console.log("Raw response from get_hourly_volume:", response);
+
+    return response[0];
+  } catch (error: any) {
+    console.error("Error getting hourly volume:", error);
+    return "0";
+  }
+};
+
+/**
+ * Get volume and trade count for a specific time range
+ * @param marketId The market ID
+ * @param startTime Start timestamp (in seconds)
+ * @param endTime End timestamp (in seconds)
+ */
+export const getVolumeByTimeRange = async (
+  marketId: number,
+  startTime: number,
+  endTime: number,
+): Promise<{ volume: string; tradeCount: string } | null> => {
+  try {
+    const response = await aptosClient().view<string[]>({
+      payload: {
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_volume_by_time_range`,
+        functionArguments: [marketId.toString(), startTime.toString(), endTime.toString()],
+      },
+    });
+    console.log("Raw response from get_volume_by_time_range:", response);
+
+    const [volume, tradeCount] = response;
+    return { volume, tradeCount };
+  } catch (error: any) {
+    console.error("Error getting volume by time range:", error);
+    return null;
+  }
+};
+
+/**
+ * Get latest trades for a market (for real-time feed)
+ * @param marketId The market ID
+ * @param limit Maximum number of trades to return
+ */
+export const getLatestTrades = async (marketId: number, limit: number): Promise<TradeRecord[]> => {
+  try {
+    const response = await aptosClient().view<any>({
+      payload: {
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_latest_trades`,
+        functionArguments: [marketId.toString(), limit.toString()],
+      },
+    });
+    
+    console.log("Raw response from get_latest_trades:", response);
+
+    // Handle the nested array structure - extract the first (and likely only) inner array
+    const tradesArray = Array.isArray(response) && response.length > 0 ? response[0] : [];
+    
+    if (!Array.isArray(tradesArray)) {
+      console.error("Expected trades array, got:", tradesArray);
+      return [];
+    }
+
+    return tradesArray.map((trade: any) => ({
+      tradeId: trade.trade_id || generateTradeId(), 
+      user: trade.user || 'unknown',
+      tradeType: trade.trade_type ? Number(trade.trade_type) : 1, 
+      outcome: trade.outcome ? Number(trade.outcome) : null,
+      amount: trade.amount || '0',
+      shares: trade.shares || null,
+      price: trade.price || '0',
+      yesPriceBefore: trade.yes_price_before || '0',
+      noPriceBefore: trade.no_price_before || '0',
+      yesPriceAfter: trade.yes_price_after || '0',
+      noPriceAfter: trade.no_price_after || '0',
+      timestamp: trade.timestamp || Math.floor(Date.now() / 1000).toString(),
+      gasUsed: trade.gas_used || null,
+    }));
+  } catch (error: any) {
+    console.error("Error getting latest trades:", error);
+    return [];
+  }
+};
+
+// Helper function to generate a trade ID if missing
+const generateTradeId = () => {
+  return `trade_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+};
+
+/**
+ * Get trade history for a specific user in a market
+ * @param marketId The market ID
+ * @param userAddress The user's address
+ * @param limit Maximum number of trades to return
+ */
+export const getUserTradeHistory = async (
+  marketId: number,
+  userAddress: string,
+  limit: number,
+): Promise<TradeRecord[]> => {
+  try {
+    const response = await aptosClient().view<TradeRecord[]>({
+      payload: {
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_user_trade_history`,
+        functionArguments: [marketId.toString(), userAddress, limit.toString()],
+      },
+    });
+    console.log("Raw response from get_user_trade_history:", response);
+
+    return response.map((trade: any) => ({
+      tradeId: trade.trade_id,
+      user: trade.user,
+      tradeType: Number(trade.trade_type),
+      outcome: trade.outcome ? Number(trade.outcome) : null,
+      amount: trade.amount,
+      shares: trade.shares || null,
+      price: trade.price,
+      yesPriceBefore: trade.yes_price_before,
+      noPriceBefore: trade.no_price_before,
+      yesPriceAfter: trade.yes_price_after,
+      noPriceAfter: trade.no_price_after,
+      timestamp: trade.timestamp,
+      gasUsed: trade.gas_used || null,
+    }));
+  } catch (error: any) {
+    console.error("Error getting user trade history:", error);
+    return [];
+  }
+};
+
+/**
+ * Get price of an outcome at a specific timestamp
+ * @param marketId The market ID
+ * @param outcome The outcome (1 for YES, 2 for NO)
+ * @param timestamp The target timestamp (in seconds)
+ */
+export const getPriceAtTimestamp = async (marketId: number, outcome: number, timestamp: number): Promise<string> => {
+  try {
+    const response = await aptosClient().view<[string]>({
+      payload: {
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_price_at_timestamp`,
+        functionArguments: [marketId.toString(), outcome.toString(), timestamp.toString()],
+      },
+    });
+    console.log("Raw response from get_price_at_timestamp:", response);
+
+    return response[0];
+  } catch (error: any) {
+    console.error("Error getting price at timestamp:", error);
+    return "0";
+  }
+};
+
+/**
+ * Get volume-weighted average price (VWAP) for an outcome over a time period
+ * @param marketId The market ID
+ * @param outcome The outcome (1 for YES, 2 for NO)
+ * @param timePeriod Time period in seconds (e.g., 86400 for 24 hours)
+ */
+export const getVolumeWeightedAveragePrice = async (
+  marketId: number,
+  outcome: number,
+  timePeriod: number,
+): Promise<string> => {
+  try {
+    const response = await aptosClient().view<[string]>({
+      payload: {
+        function: `${MODULE_ADDRESS}::pivot_market_sum::get_volume_weighted_average_price`,
+        functionArguments: [marketId.toString(), outcome.toString(), timePeriod.toString()],
+      },
+    });
+    console.log("Raw response from get_volume_weighted_average_price:", response);
+
+    return response[0];
+  } catch (error: any) {
+    console.error("Error getting VWAP:", error);
+    return "0";
   }
 };
 

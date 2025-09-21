@@ -1,15 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Plus, MessageCircle, Search, Clock, Users, DollarSign, Sparkles, Target, ChevronDown } from "lucide-react";
+import { Plus, MessageCircle, Search, Clock, Users, DollarSign, Sparkles, Target, ChevronDown, Diamond, BarChart4Icon, LucideBaggageClaim, BaggageClaimIcon, LucideDiamond, CandlestickChart } from "lucide-react";
 import { WalletSelector } from "../components/WalletSelector";
 import { useRouter } from "next/navigation";
 import { aptosClient } from "@/utils/aptosClient";
-import { getAllMarketSummaries, getUserPositions, getUserPositionsWithDetails } from "./view-functions/markets";
-import { convertAmountFromHumanReadableToOnChain } from "@/utils/helpers";
+import { getAllMarketSummaries, getMarketAnalytics, getUserPositions, getUserPositionsWithDetails } from "./view-functions/markets";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
-import { buyPosition, sellPosition } from "./entry-functions/trade";
-import { useQueryClient } from "@tanstack/react-query";
 import MarketDetailPage from "@/components/MarketDetails";
 
 const categories = ["All markets", "Crypto", "Technology", "Climate", "Space", "Finance", "Politics"];
@@ -118,9 +115,13 @@ const MarketCard = ({ market }: any) => {
       {/* Stats */}
       <div className="flex justify-between items-center text-sm text-gray-300 mt-auto">
         <div className="flex items-center gap-4">
-          <span className="flex items-center gap-1">
+          {/* <span className="flex items-center gap-1">
             <DollarSign className="w-4 h-4 text-gray-400" />
             {market.volume}
+          </span> */}
+          <span className="flex items-center gap-1">
+            <CandlestickChart className="w-4 h-4 text-gray-400" />
+           {(Number(market.totalVolume) / 1e6).toLocaleString()} USDC
           </span>
           <span className="flex items-center gap-1">
             <Users className="w-4 h-4 text-gray-400" />
@@ -186,7 +187,6 @@ export default function PivotMarketApp() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [selectedMarket, setSelectedMarket] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const { account } = useWallet();
 
   // Get market details
@@ -197,7 +197,6 @@ export default function PivotMarketApp() {
         const userPositions = await getUserPositions(0, account?.address.toString() as any);
         console.log("markets--", marketData);
         console.log("userPositions--", userPositions, account?.address.toString());
-
         setMarkets(marketData);
       } catch (error) {
         console.error("Failed to fetch markets:", error);
