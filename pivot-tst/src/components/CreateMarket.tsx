@@ -126,7 +126,6 @@ const CreateMarket = () => {
         setSuggestedQuestions(allQuestions);
       } catch (err: any) {
         console.error("Error fetching suggested markets:", err);
-        setError("Failed to load suggested markets.");
       } finally {
         setLoading(false);
       }
@@ -622,10 +621,10 @@ const CreateMarket = () => {
       <div className="max-w-4xl mx-auto px-6 py-8">
         {messages.length === 0 ? (
           /* Welcome State */
-          <div className="text-center space-y-8">
+          <div className="text-center items-center space-y-8">
             {/* Hero Section */}
             <motion.div
-              className="space-y-4"
+              className="flex justify-center flex-col items-center"
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, ease: "easeOut" }}
@@ -637,18 +636,64 @@ const CreateMarket = () => {
                 transition={{ duration: 0.6, delay: 0.2 }}
               >
                 {[
-                  { icon: BarChart3, gradient: "from-cyan-500 to-blue-600" },
-                  { icon: DollarSign, gradient: "from-purple-500 to-indigo-600" },
-                  { icon: Globe, gradient: "from-emerald-500 to-teal-600" },
-                  { icon: MessageCircle, gradient: "from-pink-500 to-rose-600" },
-                ].map(({ icon: Icon, gradient }, idx) => (
+                  { icon: BarChart3, gradient: "from-emerald-500 to-green-600" },
+                  { icon: DollarSign, gradient: "from-green-500 to-emerald-600" },
+                  { icon: Globe, gradient: "from-teal-500 to-green-600" },
+                  {
+                    icon: MessageCircle,
+                    gradient: "from-lime-600 to-emerald-700",
+                    onClick: () => {
+                      // Hide suggestions and clear input
+                      setShowSuggestions(false);
+                      setInput("");
+
+                      // Create an empty market proposal template
+                      const emptyMarketProposal = {
+                        title: "",
+                        question: "",
+                        category: "",
+                        end_date: "",
+                        resolution_criteria: "",
+                        description: "",
+                        ai_probability: 0.5,
+                        confidence: 0.7,
+                        sentiment_score: 0.5,
+                        key_factors: [],
+                        context: "Custom market created by user",
+                        sources: [],
+                      };
+
+                      // Set the empty proposal and enable editing mode
+                      setMarketProposal(emptyMarketProposal);
+                      setSelectedSuggestion(null);
+                      setEditingMarket(true);
+                      setCreatingCustomMarket(true);
+
+                      // Update progress
+                      setCurrentStep(2);
+                      setProgress("Creating Custom Market");
+
+                      // Add AI message
+                      setMessages((prev) => [
+                        ...prev,
+                        {
+                          role: "ai",
+                          content:
+                            "Let's create your custom market! Fill in the details below and I'll help you create a prediction market.",
+                        },
+                      ]);
+                    },
+                  },
+                ].map(({ icon: Icon, onClick }, idx) => (
                   <motion.div
                     key={idx}
-                    className={`w-12 h-12 rounded-2xl bg-gradient-to-r ${gradient} flex items-center justify-center shadow-lg shadow-gray-900/50`}
+                    className={`w-12 h-12 rounded-2xl bg-slate-800/80 flex items-center justify-center shadow-lg shadow-black/40 ${onClick ? "cursor-pointer hover:shadow-lime-500/20" : ""}`}
                     initial={{ opacity: 0, rotate: -90 }}
                     animate={{ opacity: 1, rotate: 0 }}
                     transition={{ duration: 0.5, delay: 0.3 + idx * 0.1 }}
                     whileHover={{ scale: 1.1, rotate: 5 }}
+                    whileTap={onClick ? { scale: 0.95 } : {}}
+                    onClick={onClick}
                   >
                     <Icon className="w-6 h-6 text-white" />
                   </motion.div>
@@ -656,21 +701,71 @@ const CreateMarket = () => {
               </motion.div>
 
               <motion.h2
-                className="text-4xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent"
+                className="text-4xl font-bold bg-slate-300 flex bg-clip-text text-transparent"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.4 }}
               >
                 Greetings,{" "}
-                <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">Fren</span>
+                <span className="bg-slate-300 flex bg-clip-text text-transparent">
+                  Fren
+                </span>
               </motion.h2>
+
               <motion.p
-                className="text-xl text-gray-400 max-w-lg mx-auto"
+                className="text-lg text-gray-300 mt-4 max-w-lg mx-auto flex items-center justify-center gap-2"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.5 }}
               >
                 Want to create a bet?
+                <span
+                  onClick={() => {
+                    // Hide suggestions and clear input
+                    setShowSuggestions(false);
+                    setInput("");
+
+                    // Create an empty market proposal template
+                    const emptyMarketProposal = {
+                      title: "",
+                      question: "",
+                      category: "",
+                      end_date: "",
+                      resolution_criteria: "",
+                      description: "",
+                      ai_probability: 0.5,
+                      confidence: 0.7,
+                      sentiment_score: 0.5,
+                      key_factors: [],
+                      context: "Custom market created by user",
+                      sources: [],
+                    };
+
+                    // Set the empty proposal and enable editing mode
+                    setMarketProposal(emptyMarketProposal);
+                    setSelectedSuggestion(null);
+                    setEditingMarket(true);
+                    setCreatingCustomMarket(true);
+
+                    // Update progress
+                    setCurrentStep(2);
+                    setProgress("Creating Custom Market");
+
+                    // Add AI message
+                    setMessages((prev) => [
+                      ...prev,
+                      {
+                        role: "ai",
+                        content:
+                          "Let's create your custom market! Fill in the details below and I'll help you create a prediction market.",
+                      },
+                    ]);
+                  }}
+                  className="text-[#02834e] hover:text-green-800 cursor-pointer font-medium transition-all duration-200 flex items-center gap-1"
+                >
+                  <Edit3 className="w-4 h-4" />
+                  Create Manually
+                </span>
               </motion.p>
             </motion.div>
 
@@ -681,7 +776,9 @@ const CreateMarket = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.6 }}
             >
-              <p className="text-sm text-gray-400 font-medium">Popular questions to get started</p>
+              <p className="text-sm text-gray-400 mb-3 font-medium">
+                Or, enter a prompt to get high-quality AI-generated markets
+              </p>
               <div
                 className="flex flex-nowrap gap-4 overflow-x-auto lg:overflow-x-hidden lg:justify-between pb-4"
                 style={{
@@ -950,7 +1047,7 @@ const CreateMarket = () => {
                     className="px-4 py-2 bg-gradient-to-b from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2"
                   >
                     <Edit3 className="w-4 h-4" />
-                    Create Custom Market
+                    Create Manually
                   </button>
                   <div className="text-sm text-green-300">Create your own market with custom parameters</div>
                 </div>
@@ -969,7 +1066,7 @@ const CreateMarket = () => {
           >
             <div className="bg-gradient-to-r from-[#2a2a30]/80 to-[#28282f]/80 backdrop-blur-sm border border-gray-600/40 rounded-2xl p-6 shadow-lg">
               <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                Market Proposal - Make Changes
+                Market Proposal
                 <Edit3 className="w-5 h-5 text-green-400" />
               </h3>
 
@@ -1063,23 +1160,7 @@ const CreateMarket = () => {
                         required
                       />
 
-                      <button
-                        type="button"
-                        onClick={handleMaxClick}
-                        disabled={loading || balance === 0}
-                        className={`
-                  absolute right-3 top-1/2 transform -translate-y-1/2 
-                  px-2 py-1 text-xs font-semibold rounded
-                  transition-colors duration-200
-                  ${
-                    loading || balance === 0
-                      ? "text-gray-500 cursor-not-allowed"
-                      : "text-green-400 hover:text-green-300 hover:bg-green-400/10 cursor-pointer"
-                  }
-                `}
-                      >
-                        MAX
-                      </button>
+                     
                     </div>
 
                     {error && <p className="text-red-400 text-xs mt-1 flex items-center">{error}</p>}

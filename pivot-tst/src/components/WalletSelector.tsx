@@ -73,12 +73,12 @@ export function WalletSelector() {
         <DropdownMenuTrigger asChild>
           <Button
             variant="default"
-            className="group relative overflow-hidden bg-[#008259] font-medium px-4 py-2 rounded-lg hover:shadow-sm hover:shadow-black-900/10 focus:outline-none focus:ring-0 active:outline-none active:ring-0"
+            className="group relative overflow-hidden bg-[#02834e] font-medium px-4 py-2 rounded-lg hover:shadow-sm hover:shadow-black-900/10 focus:outline-none focus:ring-0 active:outline-none active:ring-0"
           >
             <div className="relative flex items-center gap-3">
               {/* AI Profile Circle */}
               <div className="relative">
-                <div className="w-6 h-6 rounded-full bg-[#008259] flex items-center justify-center">
+                <div className="w-6 h-6 rounded-full bg-[#02834e] flex items-center justify-center">
                 <LucideUserCircle className="h-5 w-5 text-white" />
                 </div>
               </div>
@@ -97,7 +97,7 @@ export function WalletSelector() {
           {/* Profile Header */}
           <div className="px-3 py-3 mb-2">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[#008259] flex items-center justify-center shadow-lg">
+              <div className="w-10 h-10 rounded-full bg-[#02834e] flex items-center justify-center shadow-lg">
                 <Circle className="h-5 w-5 text-white" />
               </div>
               <div className="flex-1 min-w-0">
@@ -157,7 +157,7 @@ export function WalletSelector() {
   ) : (
     <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
       <DialogTrigger asChild>
-        <Button className="group relative overflow-hidden bg-[#008259] hover:bg-[#17513f] text-white font-semibold px-6 py-3 rounded-md transition-all ">
+        <Button className="group relative overflow-hidden bg-[#02834e] hover:bg-[#17513f] text-white font-semibold px-6 py-3 rounded-md transition-all ">
           <div className="relative flex items-center gap-3">
             {/* Wallet Icon with animation */}
             <div className="relative">
@@ -291,7 +291,7 @@ function AptosConnectWalletRow({ wallet, onConnect }: WalletRowProps) {
         <Button
           size="lg"
           variant="outline"
-          className="w-full gap-4 text-white bg-gray-900/95 border-[#008259]/70 hover:bg-[#008259]/50 hover:text-white"
+          className="w-full gap-4 text-white bg-gray-900/95 border-[#008259]/70 hover:bg-[#02834e]/50 hover:text-white"
         >
           <WalletItem.Icon className="h-5 w-5" />
           <WalletItem.Name className="text-base font-normal" />
