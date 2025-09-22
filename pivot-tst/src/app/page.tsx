@@ -104,11 +104,11 @@ const MarketCard = ({ market }: any) => {
       >
         <button className="bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 rounded-xl py-3 px-4 transition-all duration-200 h-[4.5rem] flex flex-col justify-center">
           <div className="text-green-400 text-sm font-medium mb-1">YES</div>
-          <div className="text-green-300 text-lg font-bold">{(market.yesPrice * 100).toFixed(0)}%</div>
+          <div className="text-green-300 text-lg font-bold">{(market.yesPrice * 100).toFixed(1)}%</div>
         </button>
         <button className="bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-xl py-3 px-4 transition-all duration-200 h-[4.5rem] flex flex-col justify-center">
           <div className="text-red-400 text-sm font-medium mb-1">NO</div>
-          <div className="text-red-300 text-lg font-bold">{(market.noPrice * 100).toFixed(0)}%</div>
+          <div className="text-red-300 text-lg font-bold">{(market.noPrice * 100).toFixed(1)}%</div>
         </button>
       </div>
 

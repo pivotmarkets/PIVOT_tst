@@ -1,5 +1,23 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Activity, BarChart3, Minus, Wallet, ArrowUp, ArrowDown, Trophy, DollarSign, Heart, Users, CandlestickChart, BaggageClaim, DollarSignIcon } from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  Minus,
+  Wallet,
+  ArrowUp,
+  ArrowDown,
+  Trophy,
+  DollarSign,
+  Heart,
+  Users,
+  CandlestickChart,
+  BaggageClaim,
+  DollarSignIcon,
+  Clock,
+  TrendingDown,
+  TrendingUp,
+  User,
+} from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
 import {
   formatTimestamp,
@@ -68,7 +86,9 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const [side, setSide] = useState<"YES" | "NO" | null>(null);
   const [amountUSDC, setAmountUSDC] = useState("5");
   const [selectedTimeFilter, setSelectedTimeFilter] = useState("ALL");
-  const [priceHistory, setPriceHistory] = useState([]);
+  const [priceHistory, setPriceHistory] = useState<any>([]);
+  const [latestTrades, setLatestTrades] = useState<any>([]);
+  const [marketAnalytics, setMarketAnalytics] = useState<any>(null);
 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "positions" | "activity">("overview");
@@ -261,38 +281,70 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     }
   };
 
-   const transformTradeRecordsToProbabilityChart = (
-    trades: TradeRecord[]
-  ): Array<{date: string, time: string, yesPrice: number, noPrice: number, timestamp: number}> => {
+  const transformTradeRecordsToProbabilityChart = (
+    trades: TradeRecord[],
+  ): Array<{ date: string; time: string; yesPrice: number; noPrice: number; timestamp: number }> => {
     if (!trades || trades.length === 0) {
       return [];
     }
-  
-    return trades.map((trade, index) => {
-      const yesPriceAfter = parseFloat(trade.yesPriceAfter) / 100; 
-      const noPriceAfter = parseFloat(trade.noPriceAfter) / 100;   
-      
-      const timestamp = parseInt(trade.timestamp);
-      const date = new Date(timestamp * 1000);
-      
-      // Handle invalid timestamps
-      const validDate = isNaN(date.getTime()) ? new Date() : date;
-      
-      return {
-        date: validDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        time: validDate.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' }),
-        yesPrice: Math.max(0, Math.min(100, yesPriceAfter)), 
-        noPrice: Math.max(0, Math.min(100, noPriceAfter)),   
-        timestamp: timestamp || Date.now() / 1000
-      };
-    }).sort((a, b) => a.timestamp - b.timestamp); 
+
+    return trades
+      .map((trade, index) => {
+        const yesPriceAfter = parseFloat(trade.yesPriceAfter) / 100;
+        const noPriceAfter = parseFloat(trade.noPriceAfter) / 100;
+
+        const timestamp = parseInt(trade.timestamp);
+        const date = new Date(timestamp * 1000);
+
+        // Handle invalid timestamps
+        const validDate = isNaN(date.getTime()) ? new Date() : date;
+
+        return {
+          date: validDate.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+          time: validDate.toLocaleDateString("en-US", { weekday: "short", day: "numeric" }),
+          yesPrice: Math.max(0, Math.min(100, yesPriceAfter)),
+          noPrice: Math.max(0, Math.min(100, noPriceAfter)),
+          timestamp: timestamp || Date.now() / 1000,
+        };
+      })
+      .sort((a, b) => a.timestamp - b.timestamp);
+  };
+
+  const formatAmount = (amount: string) => {
+    const num = parseFloat(amount) / 1000000; // Convert from micro units
+    if (num >= 1000000) return `$${(num / 1000000).toFixed(1)}M`;
+    if (num >= 1000) return `$${(num / 1000).toFixed(1)}K`;
+    return `$${num.toFixed(2)}`;
+  };
+
+  const getTradeTypeLabel = (tradeType: number, outcome: any) => {
+    // trade_type: 0 = buy, 1 = sell, 2 = ?
+    const action = tradeType === 0 ? "Bought" : tradeType === 1 ? "Bought" : tradeType === 2 ? "Sold" : "Funded";
+
+    const side = "Funded";
+    const isYes = false; // Default fallback
+
+    return { action, side, isYes };
+  };
+
+  const truncateAddress = (address: string | any[]) => {
+    if (!address) return "";
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
   // function to fetch price history
   const fetchPriceHistory = async () => {
     try {
       const trades = await getLatestTrades(parseFloat(market.id), 100);
-      console.log("trades:", trades);
+      const analytics = await getMarketAnalytics(market.id);
+
+      console.log("analytics", analytics);
+      console.log("latest trades", trades);
+
+      // Set the analytics and trades data
+      setMarketAnalytics(analytics as any);
+      setLatestTrades(Array.isArray(trades) ? trades : []);
+
       const history = transformTradeRecordsToProbabilityChart(trades);
       setPriceHistory(history as any);
     } catch (error) {
@@ -357,8 +409,6 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
       const positions: any = await getUserPositionDetails(market.id, account.address.toString());
       setUserPositions(positions || []);
-
-      console.log("Sell position response:", response);
       return response;
     } catch (error) {
       console.error("Error selling position:", error);
@@ -487,27 +537,23 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     return outcome.vec === "0x01" ? "YES" : "NO";
   };
 
-   // Determine which outcome is dominating
-   const isDominatingYes = market.yesPrice > market.noPrice;
-   const dominatingOutcome = isDominatingYes ? 'YES' : 'NO';
-   
-   // Transform data to show only the dominating outcome
- 
+  // Determine which outcome is dominating
+  const isDominatingYes = market.yesPrice > market.noPrice;
+  const dominatingOutcome = isDominatingYes ? "YES" : "NO";
+
+  // Transform data to show only the dominating outcome
 
   // Custom Tooltip component
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
-      const color = isDominatingYes ? '#10b981' : '#ef4444';
-      
+      const color = isDominatingYes ? "#10b981" : "#ef4444";
+
       return (
         <div className="bg-gray-800 border border-gray-700 p-3 rounded-lg shadow-xl">
           <p className="text-gray-300 text-sm font-medium mb-2">{data.time}</p>
           <div className="flex items-center gap-2">
-            <div 
-              className="w-3 h-3 rounded-sm" 
-              style={{ backgroundColor: color }}
-            ></div>
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: color }}></div>
             <p className="text-sm" style={{ color }}>
               {dominatingOutcome}: {payload[0].value.toFixed(1)}%
             </p>
@@ -554,171 +600,206 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
       <div className="max-w-6xl mx-auto mb-5 pb-6">
         {/* Market Info Card */}
-       {/* Market Info Card - Updated to show only dominating outcome */}
-       <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl mb-5 p-6">
-  {/* Market Header Section */}
-  <div className="mb-6">
-    {/* Creator info */}
-    <div className="flex items-center gap-3 mb-4">
-      <img 
-        src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=32&h=32&fit=crop&crop=face" 
-        alt="Creator" 
-        className="w-8 h-8 rounded-full"
-      />
-      <span className="text-gray-400">{marketDetails.creator}</span>
-      <span className="text-blue-400 text-sm">👑</span>
-    </div>
-    
-    {/* Market title */}
-    <h1 className="text-2xl md:text-3xl font-bold text-white mb-4">
-      {marketDetails.title}
-    </h1>
-    
-    {/* Market stats row */}
-    <div className="flex items-center gap-3 text-gray-400 text-sm mb-6">
-      <div className="flex items-center gap-1">
-        <Users className="w-4 h-4" />
-        <span>{marketDetails.participantCount}</span>
-      </div>
-      <div className="flex items-center gap-1">
-        <DollarSignIcon className="w-4 h-4" />
-        <span>{(Number(market.totalValueLocked) / 1e6).toLocaleString()}</span>
-      </div>
-      <div className="flex items-center gap-2">
-      <CandlestickChart className="w-4 h-4 text-gray-400" />
-        <span> {(Number(market.totalVolume) / 1e6).toLocaleString()} USDC</span>
-      </div>
-      <span className="text-gray-500">
-        {marketDetails.resolved 
-          ? `resolved ${new Date(parseInt(marketDetails.endTime) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` 
-          : `${getTimeLeft(marketDetails.endTime)}`
-        }
-      </span>
-    </div>
+        <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl mb-5 p-6">
+          {/* Market Header Section */}
+          <div className="mb-6">
+            {/* Market title */}
+            <h1 className="text-2xl md:text-3xl mb-5 font-bold text-white ">{marketDetails.title}</h1>
 
-    {/* Current probability display */}
-    <div className="flex items-center gap-4 mb-6">
-      <div className="flex items-center gap-2">
-        <span 
-          className={`text-4xl md:text-5xl font-bold ${yesPrice > noPrice ? 'text-green-400' : 'text-red-400'}`}
-        >
-          {yesPrice > noPrice ? (yesPrice * 100).toFixed(0) : (noPrice * 100).toFixed(0)}%
-        </span>
-        <span className="text-gray-400 text-lg">chance</span>
-      </div>
-      
-      {/* Price change indicator */}
-      <div className="flex items-center gap-1 text-sm">
-        {/* You can add price change calculation here */}
-        <span className="text-red-400">↓13</span>
-      </div>
-    </div>
-  </div>
+            {/* Creator + Market stats row */}
+            <div className="flex items-center justify-between mb-6">
+              {/* Creator info */}
+              <div className="flex items-center gap-3">
+                <img
+                  src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=32&h=32&fit=crop&crop=face"
+                  alt="Creator"
+                  className="w-5 h-5 rounded-full"
+                />
+                <span className="text-gray-400">
+                  {marketDetails.creator
+                    ? `${marketDetails.creator.slice(0, 6)}...${marketDetails.creator.slice(-4)}`
+                    : ""}
+                </span>
+                {/* <span className="text-blue-400 text-sm">👑</span> */}
+              </div>
 
-  {/* Time filter buttons - positioned top right */}
-  <div className="flex justify-end mb-4">
-    <div className="flex bg-gray-800 rounded-lg p-1">
-      {["1H", "6H", "1D", "1W", "1M", "ALL"].map((filter) => (
-        <button
-          key={filter}
-          onClick={() => setSelectedTimeFilter(filter)}
-          className={`px-3 py-1 text-sm rounded-md transition-colors ${
-            selectedTimeFilter === filter 
-              ? "bg-emerald-500 text-white" 
-              : "text-gray-400 hover:text-white"
-          }`}
-        >
-          {filter}
-        </button>
-      ))}
-    </div>
-  </div>
+              {/* Market stats row */}
+              <div className="flex items-center gap-3 text-gray-400 text-sm">
+                <div className="flex items-center gap-1">
+                  <Users className="w-4 h-4" />
+                  <span>{marketDetails.participantCount}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <DollarSignIcon className="w-4 h-4" />
+                  <span>{(Number(market.totalValueLocked) / 1e6).toLocaleString()}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CandlestickChart className="w-4 h-4 text-gray-400" />
+                  <span>{(Number(market.totalVolume) / 1e6).toLocaleString()} USDC</span>
+                </div>
+                <span className="text-gray-500">
+                  {marketDetails.resolved
+                    ? `resolved ${new Date(parseInt(marketDetails.endTime) * 1000).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}`
+                    : `${getTimeLeft(marketDetails.endTime)}`}
+                </span>
+              </div>
+            </div>
 
-  {/* Chart */}
-  <div className="h-80">
-    <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={priceHistory} margin={{ top: 10, right: 30, left: 20, bottom: 20 }}>
-        <defs>
-          <linearGradient id="yesGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
-            <stop offset="50%" stopColor="#10b981" stopOpacity={0.2} />
-            <stop offset="100%" stopColor="#10b981" stopOpacity={0.05} />
-          </linearGradient>
-          <linearGradient id="noGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#ef4444" stopOpacity={0.4} />
-            <stop offset="50%" stopColor="#ef4444" stopOpacity={0.2} />
-            <stop offset="100%" stopColor="#ef4444" stopOpacity={0.05} />
-          </linearGradient>
-        </defs>
-        
-        <CartesianGrid 
-          strokeDasharray="1 1" 
-          stroke="#374151" 
-          horizontal={true} 
-          vertical={false} 
-        />
+            {/* Current probability display */}
+            <div className="flex items-center gap-4 mb-6">
+              <div className="flex items-baseline gap-2">
+                <span
+                  className={`text-4xl md:text-5xl font-bold ${yesPrice > noPrice ? "text-green-400" : "text-red-400"}`}
+                >
+                  {yesPrice > noPrice ? (yesPrice * 100).toFixed(1) : (noPrice * 100).toFixed(1)}%
+                </span>
+                <span className="text-gray-400 text-lg">chance</span>
 
-        <XAxis 
-          dataKey="time" 
-          tick={{ fill: "#9CA3AF", fontSize: 12 }} 
-          axisLine={false} 
-          tickLine={false} 
-        />
+                {/* Price change indicator */}
+                <div className="flex items-baseline gap-1 text-sm">
+                  {/* You can add price change calculation here */}
+                  <span className="text-red-400">
+                    {latestTrades &&
+                      Array.isArray(latestTrades) &&
+                      latestTrades.length > 0 &&
+                      (() => {
+                        const latestTrade = latestTrades[0];
+                        const priceChange =
+                          parseFloat(latestTrade.yesPriceAfter) - parseFloat(latestTrade.yesPriceBefore);
+                        const isPriceIncrease = priceChange > 0;
 
-        <YAxis
-          domain={[0, 100]}
-          tick={{ fill: "#9CA3AF", fontSize: 12 }}
-          axisLine={false}
-          tickLine={false}
-          tickFormatter={(value) => `${value}%`}
-        />
+                        return priceChange !== 0 ? (
+                          <div
+                            className={`flex items-center ${isPriceIncrease ? "text-emerald-600" : "text-rose-600"}`}
+                          >
+                            <span className="text-sm font-medium">
+                              {isPriceIncrease ? "↑" : "↓"} {(priceChange / 100).toFixed(2)}
+                            </span>
+                          </div>
+                        ) : null;
+                      })()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
 
-        <Tooltip content={<CustomTooltip />} />
+          {/* Time filter buttons - positioned top right */}
+          <div className="flex justify-end mb-4">
+            <div className="flex bg-[#2f2f33] border border-gray-700 rounded-lg p-1">
+              {["1H", "6H", "1D", "1W", "1M", "ALL"].map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setSelectedTimeFilter(filter)}
+                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                    selectedTimeFilter === filter ? "bg-emerald-500 text-white" : "text-gray-400 hover:text-white"
+                  }`}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+          </div>
 
-        {/* Show only the dominating outcome */}
-        <Area
-          type="stepAfter"
-          dataKey={yesPrice > noPrice ? "yesPrice" : "noPrice"}
-          stroke={yesPrice > noPrice ? "#10b981" : "#ef4444"}
-          strokeWidth={2}
-          fill={yesPrice > noPrice ? "url(#yesGradient)" : "url(#noGradient)"}
-          dot={false}
-          activeDot={{ 
-            r: 4, 
-            fill: yesPrice > noPrice ? "#10b981" : "#ef4444", 
-            stroke: "#2f2f33", 
-            strokeWidth: 2 
-          }}
-        />
-      </AreaChart>
-    </ResponsiveContainer>
-  </div>
+          {/* Chart */}
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={priceHistory} margin={{ top: 10, right: 30, left: 20, bottom: 20 }}>
+                <defs>
+                  <linearGradient id="yesGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
+                    <stop offset="50%" stopColor="#10b981" stopOpacity={0.2} />
+                    <stop offset="100%" stopColor="#10b981" stopOpacity={0.05} />
+                  </linearGradient>
+                  <linearGradient id="noGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#ef4444" stopOpacity={0.4} />
+                    <stop offset="50%" stopColor="#ef4444" stopOpacity={0.2} />
+                    <stop offset="100%" stopColor="#ef4444" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
 
-  {/* Current Dominating Price Indicator */}
-  <div className="mt-4">
-    <div 
-      className={`flex items-center justify-between p-4 rounded-lg border ${
-        yesPrice > noPrice 
-          ? 'bg-green-500/10 border-green-500/20' 
-          : 'bg-red-500/10 border-red-500/20'
-      }`}
-    >
-      <span 
-        className={`text-2xl font-bold ${yesPrice > noPrice ? 'text-green-400' : 'text-red-400'}`}
-      >
-        {yesPrice > noPrice ? (yesPrice * 100).toFixed(1) : (noPrice * 100).toFixed(1)}%
-      </span>
-    </div>
-    
-    {/* Additional context */}
-    <div className="mt-2 text-center">
-      <span className="text-gray-500 text-sm">
-        Market confidence: {Math.abs((yesPrice - noPrice) * 100).toFixed(1)}% spread
-      </span>
-    </div>
-  </div>
-</div>
+                <CartesianGrid strokeDasharray="1 1" stroke="#374151" horizontal={true} vertical={false} />
 
+                <XAxis dataKey="time" tick={{ fill: "#9CA3AF", fontSize: 12 }} axisLine={false} tickLine={false} />
+
+                <YAxis
+                  domain={[0, 100]}
+                  tick={{ fill: "#9CA3AF", fontSize: 12 }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(value) => `${value}%`}
+                />
+
+                <Tooltip content={<CustomTooltip />} />
+
+                {/* Show only the dominating outcome */}
+                <Area
+                  type="stepAfter"
+                  dataKey={yesPrice > noPrice ? "yesPrice" : "noPrice"}
+                  stroke={yesPrice > noPrice ? "#10b981" : "#ef4444"}
+                  strokeWidth={2}
+                  fill={yesPrice > noPrice ? "url(#yesGradient)" : "url(#noGradient)"}
+                  dot={false}
+                  activeDot={{
+                    r: 4,
+                    fill: yesPrice > noPrice ? "#10b981" : "#ef4444",
+                    stroke: "#2f2f33",
+                    strokeWidth: 2,
+                  }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Current Dominating Price Indicator */}
+          <div className="mt-4">
+            {/* Dominance Bar showing split between Yes and No */}
+            <div className="mt-4">
+              <div className="">
+                {/* Dominance Bar */}
+                <div className="relative h-4 bg-slate-100/70 rounded-md overflow-hidden">
+                  {/* Yes side (left) */}
+                  <div
+                    className="absolute left-0 top-0 h-full bg-gradient-to-r from-emerald-300/80 to-emerald-400/80 transition-all duration-500 ease-out"
+                    style={{ width: `${yesPrice * 100}%` }}
+                  />
+
+                  {/* No side (right) */}
+                  <div
+                    className="absolute right-0 top-0 h-full bg-gradient-to-l from-rose-300/80 to-rose-400/80 transition-all duration-500 ease-out"
+                    style={{ width: `${noPrice * 100}%` }}
+                  />
+
+                  {/* Center divider line */}
+                  <div className="absolute left-1/2 top-0 w-px h-full bg-slate-300/40 transform -translate-x-0.5" />
+                </div>
+
+                {/* Percentage Labels */}
+                <div className="flex items-center justify-between mt-2">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-3 h-3 rounded-md bg-gradient-to-r from-emerald-300/80 to-emerald-400/80" />
+                    <span className="text-sm font-medium text-emerald-600">Yes {(yesPrice * 100).toFixed(1)}%</span>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-medium text-rose-600">No {(noPrice * 100).toFixed(1)}%</span>
+                    <div className="w-3 h-3 rounded-md bg-gradient-to-l from-rose-300/80 to-rose-400/80" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Additional context */}
+            <div className="mt-2 text-center">
+              <span className="text-gray-500 text-sm">
+                Market confidence: {Math.abs((yesPrice - noPrice) * 100).toFixed(1)}% spread
+              </span>
+            </div>
+          </div>
+        </div>
 
         {/* Action Buttons */}
         {!marketDetails.resolved && !isClosed && (
@@ -829,9 +910,26 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   <span className="text-gray-400 text-sm">New probability</span>
                   <div className="flex items-center gap-2">
                     <span className="text-white text-lg font-bold">
-                      {side === "YES" ? `${(yesPrice * 100).toFixed(1)}%` : `${(noPrice * 100).toFixed(1)}%`}
+                      {side === "YES" ? `${(yesPrice * 100).toFixed(2)}%` : `${(noPrice * 100).toFixed(2)}%`}
                     </span>
-                    <span className="text-gray-400 text-sm">↓1.6% 🔒</span>
+                    {latestTrades &&
+                      Array.isArray(latestTrades) &&
+                      latestTrades.length > 0 &&
+                      (() => {
+                        const latestTrade = latestTrades[0];
+                        const priceChange =
+                          parseFloat(latestTrade.yesPriceAfter) - parseFloat(latestTrade.yesPriceBefore);
+                        const isPriceIncrease = priceChange > 0;
+
+                        return priceChange !== 0 ? (
+                          <span className={`text-sm ${isPriceIncrease ? "text-emerald-400" : "text-rose-400"}`}>
+                            {isPriceIncrease ? "↑" : "↓"}{" "}
+                            {(Math.abs(priceChange) / 100).toFixed(2)}% 🔒
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-sm">No change 🔒</span>
+                        );
+                      })()}
                   </div>
                 </div>
 
@@ -839,9 +937,9 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   <span className="text-gray-400 text-sm">To win</span>
                   <div className="flex items-center gap-2">
                     <span className="text-white text-lg font-bold">
-                      ${amountUSDC ? calculatePayout(side as any, parseFloat(amountUSDC)).toFixed(0) : "0"}
+                      ${amountUSDC ? calculatePayout(side as any, parseFloat(amountUSDC)).toFixed(1) : "0"}
                     </span>
-                    <span className="text-green-400 text-sm font-medium">
+                    <span className="text-emerald-400 text-sm font-medium">
                       +
                       {amountUSDC
                         ? (
@@ -866,7 +964,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                 } disabled:bg-gray-600 disabled:cursor-not-allowed`}
               >
                 Buy {side || "NO"} to win $
-                {amountUSDC ? calculatePayout(side as any, parseFloat(amountUSDC)).toFixed(0) : "0"}
+                {amountUSDC ? calculatePayout(side as any, parseFloat(amountUSDC)).toFixed(1) : "0"}
               </button>
 
               {/* Balance */}
@@ -915,7 +1013,12 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                 : "text-gray-400 hover:text-white hover:bg-gray-700/50"
             }`}
           >
-            Activity
+            Trades
+            {userPositions.length > 0 && (
+              <span className="ml-2 bg-[#008259] text-white text-xs px-2 py-1 rounded-full">
+                {marketAnalytics?.totalTrades}
+              </span>
+            )}
           </button>
         </div>
 
@@ -924,14 +1027,14 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Total Value Locked</h3>
+                <h3 className="text-lg font-semibold text-white mb-4">TVL</h3>
                 <div className="text-2xl font-bold text-slate-400">
                   {formatCurrency(marketDetails.totalValueLocked)}
                 </div>
               </div>
               <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
                 <h3 className="text-lg font-semibold text-white mb-4">Total Liquidity</h3>
-                <div className="text-2xl font-bold text-slate-400">{formatCurrency(marketDetails.totalLiquidity)}</div>
+                <div className="text-2xl font-bold text-slate-400">{formatCurrency(marketDetails?.totalLiquidity)}</div>
               </div>
               <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
                 <h3 className="text-lg font-semibold text-white mb-4">Created</h3>
@@ -1156,11 +1259,78 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
         {/* Activity Tab */}
         {activeTab === "activity" && (
-          <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-8 text-center">
-            <div className="text-gray-400">
-              <Activity className="w-12 h-12 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Activity Feed</h3>
-              <p>Market activity and transaction history will be displayed here.</p>
+          <div className="space-y-6">
+            {/* Market Analytics Summary */}
+
+            {/* Recent Trades */}
+            <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
+              {latestTrades && Array.isArray(latestTrades) && latestTrades.length === 0 ? (
+                <div className="text-center py-8 text-slate-500">
+                  <Activity className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>No recent trading activity</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {latestTrades &&
+                    Array.isArray(latestTrades) &&
+                    latestTrades.slice(0, 20).map((trade, index) => {
+                      const { action, side, isYes } = getTradeTypeLabel(trade.tradeType, trade.outcome);
+                      const priceChange = parseFloat(trade.yesPriceAfter) - parseFloat(trade.yesPriceBefore);
+                      const isPriceIncrease = priceChange > 0;
+
+                      // Determine if this is a Yes or No trade from price movement
+                      const isYesTrade = parseFloat(trade.yesPriceAfter) > parseFloat(trade.yesPriceBefore);
+                      const actualSide = isYesTrade ? "Yes" : "No";
+
+                      return (
+                        <div
+                          key={trade.tradeId || index}
+                          className="flex items-center justify-between p-4 rounded-lg bg-[#2f2f33] border border-gray-700/50"
+                        >
+                          <div className="flex items-center space-x-3">
+                            {/* Action Icon */}
+                            <div className={`p-2 rounded-full ${isYesTrade ? "bg-emerald-100/80" : "bg-rose-100/80"}`}>
+                              <User className={`w-4 h-4 ${isYesTrade ? "text-emerald-600" : "text-rose-600"}`} />
+                            </div>
+
+                            {/* Trade Details */}
+                            <div>
+                              <div className="flex items-center space-x-2">
+                                <span className="font-medium text-slate-300">{truncateAddress(trade.user)}</span>
+                                <span className="text-slate-500">{action}</span>
+                                <span
+                                  className={`font-semibold px-2 py-1 rounded text-xs ${
+                                    isYesTrade ? "bg-emerald-100/80 text-emerald-700" : "bg-rose-100/70 text-rose-700"
+                                  }`}
+                                >
+                                  {actualSide}
+                                </span>
+                              </div>
+                              <div className="text-sm text-slate-500">{formatDate(trade.timestamp)}</div>
+                            </div>
+                          </div>
+
+                          {/* Trade Value & Price Impact */}
+                          <div className="text-right">
+                            <div className="text-sm text-slate-500">
+                              {formatPrice((trade.amount / 100).toString())} USDC
+                            </div>
+                            {priceChange !== 0 && (
+                              <div
+                                className={`text-xs flex items-center ${
+                                  isPriceIncrease ? "text-emerald-600" : "text-rose-600"
+                                }`}
+                              >
+                                {isPriceIncrease ? "+" : ""}
+                                {(priceChange / 100).toFixed(2)}%
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
             </div>
           </div>
         )}
