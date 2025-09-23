@@ -1,13 +1,46 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Plus, MessageCircle, Search, Clock, Users, DollarSign, Sparkles, Target, ChevronDown, Diamond, BarChart4Icon, LucideBaggageClaim, BaggageClaimIcon, LucideDiamond, CandlestickChart } from "lucide-react";
+import {
+  Plus,
+  MessageCircle,
+  Search,
+  Clock,
+  Users,
+  DollarSign,
+  Sparkles,
+  Target,
+  ChevronDown,
+  Diamond,
+  BarChart4Icon,
+  LucideBaggageClaim,
+  BaggageClaimIcon,
+  LucideDiamond,
+  CandlestickChart,
+  PlusCircle,
+  SearchIcon,
+  Loader,
+  Send,
+} from "lucide-react";
 import { WalletSelector } from "../components/WalletSelector";
 import { useRouter } from "next/navigation";
 import { aptosClient } from "@/utils/aptosClient";
-import { getAllMarketSummaries, getMarketAnalytics, getUserPositions, getUserPositionsWithDetails } from "./view-functions/markets";
+import {
+  getAllMarketSummaries,
+  getMarketAnalytics,
+  getUserPositions,
+  getUserPositionsWithDetails,
+} from "./view-functions/markets";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import MarketDetailPage from "@/components/MarketDetails";
+import { PlusIcon } from "@heroicons/react/24/solid";
+import { NewsItem, PredictionMarketsResponse, QuickPredictionResponse, TrendingNewsResponse } from "./serve";
+
+interface AIAssistantPanelProps {
+  isVisible: boolean;
+  onClose: () => void;
+  apiBaseUrl?: string;
+}
 
 const categories = ["All markets", "Crypto", "Technology", "Climate", "Space", "Finance", "Politics"];
 const statusFilters = ["All Status", "Live", "Ended"];
@@ -26,6 +59,77 @@ function getTimeLeft(endTimeEpoch: string) {
   if (days > 0) return `${days}d ${hours}h`;
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
+}
+
+class PredictionMarketsAPI {
+  private baseUrl: string;
+  public sessionId: string | null = null;
+
+  constructor(baseUrl: string = "http://localhost:8000") {
+    this.baseUrl = baseUrl;
+  }
+
+  private async makeRequest<T = any>(endpoint: string, options: any = {}): Promise<T> {
+    try {
+      const url = `${this.baseUrl}${endpoint}`;
+      const response = await fetch(url, {
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers,
+        },
+        ...options,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.session_id) {
+        this.sessionId = data.session_id;
+      }
+
+      return data as T;
+    } catch (error) {
+      console.error(`API Request failed for ${endpoint}:`, error);
+      throw error;
+    }
+  }
+
+  async getTrendingNews(categories?: string[] | null, limit: number = 10): Promise<TrendingNewsResponse> {
+    const params = new URLSearchParams();
+    if (categories && categories.length > 0) {
+      params.append("categories", categories.join(","));
+    }
+    if (limit) {
+      params.append("limit", limit.toString());
+    }
+
+    const queryString = params.toString();
+    const endpoint = queryString ? `/api/news/trending?${queryString}` : "/api/news/trending";
+
+    return await this.makeRequest<TrendingNewsResponse>(endpoint, {
+      method: "GET",
+    });
+  }
+
+  async getQuickPrediction(query: string): Promise<QuickPredictionResponse> {
+    return await this.makeRequest<QuickPredictionResponse>("/api/market/quick-prediction", {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    });
+  }
+
+  async generatePredictionMarkets(query: string, numSuggestions: number = 3): Promise<PredictionMarketsResponse> {
+    return await this.makeRequest<PredictionMarketsResponse>("/api/predict", {
+      method: "POST",
+      body: JSON.stringify({
+        query,
+        num_suggestions: numSuggestions,
+      }),
+    });
+  }
 }
 
 // Arc meter component for showing sentiment/odds
@@ -85,7 +189,7 @@ const MarketCard = ({ market }: any) => {
 
   return (
     <div
-      className="bg-[#2f2f33] border border-gray-700/30 rounded-2xl p-6 hover:border-[#666667] transition-all duration-300 cursor-pointer group h-full flex flex-col"
+      className="bg-[#2f2f33] border border-gray-700/30 rounded-2xl p-6 hover:border-[#66666765] transition-all duration-300 cursor-pointer group h-full flex flex-col"
       onClick={handleMarketClick}
     >
       {/* Header with title and arc meter */}
@@ -121,7 +225,7 @@ const MarketCard = ({ market }: any) => {
           </span> */}
           <span className="flex items-center gap-1">
             <CandlestickChart className="w-4 h-4 text-gray-400" />
-           {(Number(market.totalVolume) / 1e6).toLocaleString()} USDC
+            {(Number(market.totalVolume) / 1e6).toLocaleString()} USDC
           </span>
           <span className="flex items-center gap-1">
             <Users className="w-4 h-4 text-gray-400" />
@@ -137,42 +241,273 @@ const MarketCard = ({ market }: any) => {
   );
 };
 
-const AIAssistantPanel = ({ isVisible, onClose }: any) => {
+const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ 
+  isVisible, 
+  onClose, 
+  apiBaseUrl = "http://localhost:8000" 
+}) => {
+  const [api] = useState(() => new PredictionMarketsAPI(apiBaseUrl));
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [messages, setMessages] = useState<Array<{
+    type: 'user' | 'assistant' | 'insight';
+    content: string;
+    data?: any;
+    timestamp: Date;
+  }>>([]);
+  const [insights, setInsights] = useState<NewsItem[]>([]);
+
+  // Load initial insights when panel opens
+  useEffect(() => {
+    if (isVisible) {
+      loadInitialInsights();
+    }
+  }, [isVisible]);
+
+  const loadInitialInsights = async () => {
+    try {
+      setIsLoading(true);
+      const response = await api.getTrendingNews(['politics', 'crypto', 'technology', 'economics'], 5);
+      
+      if (response.success && response.trending_news) {
+        setInsights(response.trending_news);
+        
+        // Add initial insight message
+        const insightMessage = {
+          type: 'insight' as const,
+          content: `Found ${response.trending_news.length} trending market insights. Here are the top opportunities:`,
+          data: response.trending_news,
+          timestamp: new Date()
+        };
+        
+        setMessages([insightMessage]);
+      }
+    } catch (error) {
+      console.error('Failed to load initial insights:', error);
+      setMessages([{
+        type: 'assistant',
+        content: 'Unable to load market insights. Please check your connection to the prediction markets API.',
+        timestamp: new Date()
+      }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!input.trim() || isLoading) return;
+
+    const userMessage = {
+      type: 'user' as const,
+      content: input,
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+
+    try {
+      // Determine the type of query and call appropriate endpoint
+      const query = input.toLowerCase();
+      
+      if (query.includes('predict') || query.includes('probability') || query.includes('will')) {
+        // Quick prediction query
+        const response = await api.getQuickPrediction(input);
+        
+        if (response.success) {
+          const assistantMessage = {
+            type: 'assistant' as const,
+            content: `${response.answer}\n\nProbability: ${response.probability}\nConfidence: ${response.confidence}\n\nKey factors: ${response.factors.join(', ')}`,
+            data: response,
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, assistantMessage]);
+        } else {
+          throw new Error(response.error || 'Prediction failed');
+        }
+        
+      } else if (query.includes('market') || query.includes('suggest') || query.includes('create')) {
+        // Market suggestion query
+        const response = await api.generatePredictionMarkets(input, 3);
+        
+        if (response.success) {
+          const assistantMessage = {
+            type: 'assistant' as const,
+            content: `Found ${response.count} market suggestions for: "${response.query}"`,
+            data: response.prediction_markets,
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, assistantMessage]);
+        } else {
+          throw new Error(response.error || 'Market generation failed');
+        }
+        
+      } else {
+        // General news/trending query
+        const categories = [];
+        if (query.includes('crypto')) categories.push('crypto');
+        if (query.includes('tech')) categories.push('technology');
+        if (query.includes('politic')) categories.push('politics');
+        if (query.includes('sport')) categories.push('sports');
+        if (query.includes('economic')) categories.push('economics');
+        
+        const response = await api.getTrendingNews(categories.length > 0 ? categories : null, 5);
+        
+        if (response.success) {
+          const assistantMessage = {
+            type: 'assistant' as const,
+            content: `Here are ${response.news_count} trending news items that could become prediction markets:`,
+            data: response.trending_news,
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, assistantMessage]);
+        } else {
+          throw new Error(response.error || 'News fetch failed');
+        }
+      }
+      
+    } catch (error) {
+      const errorMessage = {
+        type: 'assistant' as const,
+        content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+      setInput('');
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
   if (!isVisible) return null;
 
   return (
-    <div className="fixed right-4 top-20 bottom-4 w-80 bg-gray-900/95 backdrop-blur-lg border border-gray-700/50 rounded-lg z-50 flex flex-col animate-slideInRight">
-      <div className="flex items-center justify-between p-4 border-b border-gray-700/50">
+    <div className="fixed right-4 top-20 bottom-4 w-96 bg-[#2f2f33]/95 backdrop-blur-lg border border-[#008259]/30 rounded-lg z-50 flex flex-col shadow-2xl">
+      <div className="flex items-center justify-between p-4 border-b border-[#008259]/30">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-blue-400" />
+          <Sparkles className="w-5 h-5 text-[#008259]" />
           <h3 className="text-white font-medium">AI Market Assistant</h3>
+          {api.sessionId && (
+            <span className="text-xs text-[#008259]">●</span>
+          )}
         </div>
-        <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors text-xl">
-          x
+        <button 
+          onClick={onClose} 
+          className="text-gray-400 hover:text-white transition-colors text-xl hover:bg-[#2f2f33] w-6 h-6 rounded flex items-center justify-center"
+        >
+          ×
         </button>
       </div>
 
-      <div className="flex-1 p-4 overflow-y-auto">
-        <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-          <h4 className="text-blue-300 font-medium mb-2">Market Insights</h4>
-          <p className="text-blue-200 text-sm">
-            Current sentiment shows high volatility in crypto markets. AI-related predictions are gaining significant
-            traction with increased trading volume this week.
-          </p>
-        </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {isLoading && messages.length === 0 && (
+          <div className="flex items-center justify-center p-8">
+            <Loader className="w-6 h-6 text-[#008259] animate-spin" />
+          </div>
+        )}
+
+        {messages.map((message, index) => (
+          <div key={index} className={`${message.type === 'user' ? 'ml-4' : 'mr-4'}`}>
+            <div className={`rounded-lg p-3 ${
+              message.type === 'user' 
+                ? 'bg-[#008259] text-white ml-auto max-w-[80%]' 
+                : message.type === 'insight'
+                ? 'bg-[#008259]/20 border border-[#008259]/40 text-[#008259]'
+                : 'bg-[#2f2f33] text-gray-100 border border-[#008259]/20'
+            }`}>
+              <div className="text-sm mb-1">
+                {message.content}
+              </div>
+              
+              {/* Render specific data based on message type */}
+              {message.data && Array.isArray(message.data) && (
+                <div className="mt-2 space-y-2">
+                  {message.data.slice(0, 3).map((item: any, idx: number) => (
+                    <div key={idx} className="bg-black/30 rounded p-2 text-xs border border-[#008259]/10">
+                      {item.title && (
+                        <div className="font-medium text-[#008259] mb-1">{item.title}</div>
+                      )}
+                      {item.question && (
+                        <div className="font-medium text-[#008259] mb-1">{item.question}</div>
+                      )}
+                      {item.summary && (
+                        <div className="text-gray-300 mb-1">{item.summary}</div>
+                      )}
+                      {item.description && (
+                        <div className="text-gray-300 mb-1">{item.description}</div>
+                      )}
+                      {item.ai_probability && (
+                        <div className="text-[#008259]">
+                          Probability: {(item.ai_probability * 100).toFixed(1)}%
+                        </div>
+                      )}
+                      {item.market_potential && (
+                        <div className="text-[#008259]/80">
+                          Market Potential: {(item.market_potential * 100).toFixed(1)}%
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              <div className="text-xs text-gray-400 mt-2">
+                {message.timestamp.toLocaleTimeString()}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {isLoading && messages.length > 0 && (
+          <div className="flex items-center gap-2 text-[#008259] mr-4">
+            <Loader className="w-4 h-4 animate-spin" />
+            <span className="text-sm">Analyzing...</span>
+          </div>
+        )}
       </div>
 
-      <div className="p-4 border-t border-gray-700/50">
+      <div className="p-4 border-t border-[#008259]/30">
+        <div className="flex gap-2 mb-2">
+          <button
+            onClick={() => setInput("What are the trending crypto predictions today?")}
+            className="text-xs px-2 py-1 bg-[#2f2f33] text-gray-300 rounded hover:bg-[#008259]/20 hover:text-[#008259] border border-[#008259]/20 transition-colors"
+          >
+            Trending geo-politics
+          </button>
+          <button
+            onClick={() => setInput("Will AI stocks go up this week?")}
+            className="text-xs px-2 py-1 bg-[#2f2f33] text-gray-300 rounded hover:bg-[#008259]/20 hover:text-[#008259] border border-[#008259]/20 transition-colors"
+          >
+            markets for tech news
+          </button>
+        </div>
+        
         <div className="flex gap-2">
           <input
             type="text"
-            placeholder="Ask about market trends..."
-            className="flex-1 bg-[#2f2f33] border border-gray-600 rounded px-3 py-2 text-white text-sm placeholder-gray-400 focus:outline-none focus:border-blue-500"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="Ask about market trends, predictions, or news..."
+            className="flex-1 bg-[#2f2f33] border border-[#008259]/30 rounded px-3 py-2 text-white text-sm placeholder-gray-400 focus:outline-none focus:border-[#008259]"
+            disabled={isLoading}
           />
-          <button className="px-4 py-2 bg-[#008259] hover:bg-blue-500 text-white rounded transition-colors">
-            <MessageCircle className="w-4 h-4" />
+          <button 
+            onClick={handleSendMessage}
+            disabled={isLoading || !input.trim()}
+            className="px-4 py-2 bg-[#008259] hover:bg-[#008259]/80 disabled:bg-[#2f2f33] disabled:cursor-not-allowed text-white rounded transition-colors"
+          >
+            {isLoading ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>
         </div>
+
       </div>
     </div>
   );
@@ -272,6 +607,17 @@ export default function PivotMarketApp() {
           }
         }
 
+        @keyframes fadeInDown {
+          from {
+            opacity: 0;
+            transform: translateY(-20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
         @keyframes slideInRight {
           from {
             opacity: 0;
@@ -297,6 +643,10 @@ export default function PivotMarketApp() {
           animation: fadeInUp 0.6s ease-out forwards;
         }
 
+        .animate-fadeInDown {
+          animation: fadeInDown 0.6s ease-out forwards;
+        }
+
         .animate-slideInRight {
           animation: slideInRight 0.3s ease-out forwards;
         }
@@ -307,12 +657,12 @@ export default function PivotMarketApp() {
       `}</style>
 
       {/* Header */}
-      <header className="bg-[#1a1a1e57] sticky top-0 z-40 overflow-hidden animate-fadeInUp border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
-        <div className="max-w-7xl mx-auto px-6 py-2">
+      <header className="bg-[#1a1a1e2c] animate-fadeInDown sticky top-0 z-40 overflow-hidden border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
+        <div className="max-w-7xl mx-auto py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
               <h1 className="text-2xl font-bold text-white">
-                <img src="/icons/logo.png" alt="Pivot Logo" className="ml-2 h-16 w-16 text-blue-400" />
+                <img src="/icons/p-lg.png" alt="Pivot Logo" className="ml-2 h-12 w-12 text-blue-400" />
               </h1>
             </div>
 
@@ -334,33 +684,40 @@ export default function PivotMarketApp() {
           </div>
         </div>
       </header>
+      {/* Hero Section */}
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Hero Section */}
-        <div className="mb-12 mt-6 animate-fadeInUp" style={{ animationDelay: "0.2s" }}>
+      <div
+        className="w-full mb-12 bg-cover bg-center"
+        style={{
+          animationDelay: "0.2s",
+          backgroundImage: "url('/cover.png')", // image in public root
+        }}
+      >
+        {/* Inner content constrained to max width */}
+        <div className="max-w-7xl mx-auto px-6 py-12 rounded-2xl">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-4xl font-bold text-white mb-4">Prediction Markets</h1>
-              <p className="text-gray-400 text-lg max-w-2xl">
-                Trade predictions on future events. Maximize your returns by participating in the world's most advanced
-                prediction markets powered by AI insights.
+              <h1 className="text-4xl font-bold text-white mb-4">Pivot Markets</h1>
+              <p className="text-gray-200 text-lg max-w-2xl">
+                Discover and trade future outcomes with real-time insights in transparent, trustless on-chain markets.
               </p>
 
               <div className="flex items-center mt-6 gap-4">
                 <button
-                  className="flex items-center gap-2 px-6 py-3 bg-[#008259] hover:bg-[#00553A] text-white rounded-lg transition-colors"
+                  className="flex items-center gap-2 px-6 py-3 bg-[#008259] hover:bg-[#095435] text-white rounded-lg transition-colors"
                   onClick={() => router.push("/create")}
                 >
-                  <Plus className="w-5 h-5" />
+                  <PlusCircle className="w-5 h-5" />
                   Create Market
                 </button>
               </div>
             </div>
           </div>
         </div>
-
+      </div>
+      <div className="max-w-7xl mx-auto mb-20 px-6 ">
         {/* Filters Section */}
-        <div className="mb-8 animate-fadeInUp" style={{ animationDelay: "0.4s" }}>
+        <div className="mb-8 ">
           {/* Category Tabs */}
           <div className="flex items-center gap-1 mb-6 flex-wrap">
             {categories.map((category) => (
@@ -384,13 +741,13 @@ export default function PivotMarketApp() {
           {/* Search and Filters */}
           <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
             <div className="flex-1 relative max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
                 placeholder="Search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-[#2f2f33] border border-gray-700/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                className="w-full pl-10 pr-4 py-3 bg-[#232328] border border-[#2f2f33] rounded-lg placeholder:text-[#6c6c6f] text-white placeholder-gray-400 focus:outline-none focus:border-emerald-500/80"
               />
             </div>
 
@@ -401,7 +758,7 @@ export default function PivotMarketApp() {
                   <select
                     value={selectedStatus}
                     onChange={(e) => setSelectedStatus(e.target.value)}
-                    className="bg-[#2f2f33] border border-gray-700/50 rounded-lg px-3 py-3 pr-8 text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+                    className="bg-[#232328] border border-[#2f2f33] rounded-lg px-3 py-3 pr-8 text-[#c6c6c7] focus:outline-none focus:border-emerald-500/80 appearance-none cursor-pointer"
                   >
                     {statusFilters.map((status) => (
                       <option key={status} value={status}>
@@ -419,7 +776,7 @@ export default function PivotMarketApp() {
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
-                    className="bg-[#2f2f33] border border-gray-700/50 rounded-lg px-3 py-2 pr-8 text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+                    className="bg-[#232328] border border-[#2f2f33] rounded-lg px-3 py-3 pr-8 text-[#c6c6c7] focus:outline-none focus:border-emerald-500/80 appearance-none cursor-pointer"
                   >
                     {sortOptions.map((option) => (
                       <option key={option} value={option}>
@@ -478,53 +835,46 @@ export default function PivotMarketApp() {
         </div>
 
         {filteredMarkets.length === 0 && (
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-    {[1, 2, 3, 4, 5, 6].map((index) => (
-      <div
-        key={index}
-        className="bg-[#2f2f33] border border-gray-700/30 rounded-2xl p-6 animate-pulse"
-      >
-        {/* Header skeleton */}
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex-1 pr-4">
-            <div className="h-6 bg-gray-700/50 rounded mb-2"></div>
-            <div className="h-4 bg-gray-700/30 rounded w-3/4"></div>
-          </div>
-          {/* Arc meter skeleton */}
-          <div className="w-16 h-8 bg-gray-700/50 rounded-full"></div>
-        </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3, 4, 5, 6].map((index) => (
+              <div key={index} className="bg-[#2f2f33] border border-gray-700/30 rounded-2xl p-6 animate-pulse">
+                {/* Header skeleton */}
+                <div className="flex items-start justify-between mb-6">
+                  <div className="flex-1 pr-4">
+                    <div className="h-6 bg-gray-700/50 rounded mb-2"></div>
+                    <div className="h-4 bg-gray-700/30 rounded w-3/4"></div>
+                  </div>
+                  {/* Arc meter skeleton */}
+                  <div className="w-16 h-8 bg-gray-700/50 rounded-full"></div>
+                </div>
 
-        {/* YES/NO buttons skeleton */}
-        <div className="grid grid-cols-2 gap-3 mb-6 mt-3">
-          <div className="bg-gray-700/20 border border-gray-700/30 rounded-xl py-3 px-4 h-[4.5rem] flex flex-col justify-center">
-        
-          </div>
-          <div className="bg-gray-700/20 border border-gray-700/30 rounded-xl py-3 px-4 h-[4.5rem] flex flex-col justify-center">
-            
-          </div>
-        </div>
+                {/* YES/NO buttons skeleton */}
+                <div className="grid grid-cols-2 gap-3 mb-6 mt-3">
+                  <div className="bg-gray-700/20 border border-gray-700/30 rounded-xl py-3 px-4 h-[4.5rem] flex flex-col justify-center"></div>
+                  <div className="bg-gray-700/20 border border-gray-700/30 rounded-xl py-3 px-4 h-[4.5rem] flex flex-col justify-center"></div>
+                </div>
 
-        {/* Stats skeleton */}
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1">
-              <div className="w-4 h-4 bg-gray-700/50 rounded"></div>
-              <div className="h-4 bg-gray-700/50 rounded w-16"></div>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-4 h-4 bg-gray-700/50 rounded"></div>
-              <div className="h-4 bg-gray-700/50 rounded w-12"></div>
-            </div>
+                {/* Stats skeleton */}
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-1">
+                      <div className="w-4 h-4 bg-gray-700/50 rounded"></div>
+                      <div className="h-4 bg-gray-700/50 rounded w-16"></div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-4 h-4 bg-gray-700/50 rounded"></div>
+                      <div className="h-4 bg-gray-700/50 rounded w-12"></div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-4 h-4 bg-gray-700/50 rounded"></div>
+                    <div className="h-4 bg-gray-700/50 rounded w-16"></div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-gray-700/50 rounded"></div>
-            <div className="h-4 bg-gray-700/50 rounded w-16"></div>
-          </div>
-        </div>
-      </div>
-    ))}
-  </div>
-)}
+        )}
 
         {/* Empty State */}
         {account && filteredMarkets.length === 0 && (

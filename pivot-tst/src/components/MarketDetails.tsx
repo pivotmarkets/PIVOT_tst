@@ -35,6 +35,7 @@ import { buyPosition, claimWinnings, sellPosition } from "@/app/entry-functions/
 import { aptosClient } from "@/utils/aptosClient";
 import { convertAmountFromHumanReadableToOnChain } from "@/utils/helpers";
 import { useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 
 // Types
 interface Position {
@@ -489,25 +490,27 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#232328]">
-        <header className="sticky top-0 mb-6 bg-[#1a1a1e57] z-40 overflow-hidden animate-fadeInUp border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
-          <div className="max-w-7xl mx-auto px-4 py-1">
-            <div className="flex justify-between items-center px-4 py-1">
-              {/* Logo Section */}
-              <div className="cursor-pointer flex flex-nowrap flex-col" onClick={() => router.push("/")}>
+        <header className="bg-[#1a1a1e2c] sticky top-0 z-40 overflow-hidden animate-fadeInUp border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
+          <div className="max-w-7xl mx-auto py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-6">
                 <h1 className="text-2xl font-bold text-white">
-                  <img src="/icons/logo.png" alt="Pivot Logo" className="ml-2 h-16 w-16 text-blue-400" />
+                  <Link href="/">
+                    <img src="/icons/p-lg.png" alt="Pivot Logo" className="ml-2 h-12 w-12 cursor-pointer" />
+                  </Link>
                 </h1>
               </div>
 
-              {/* Wallet Connect Section */}
-              <div className="flex gap-2 items-center flex-wrap">
-                <WalletSelector />
+              <div className="flex items-center gap-4">
+                <div className="flex gap-2 items-center flex-wrap">
+                  <WalletSelector />
+                </div>
               </div>
             </div>
           </div>
         </header>
 
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-6xl mx-auto mt-12">
           <div className="animate-pulse">
             <div className="h-8 bg-[#2f2f33] rounded-lg w-1/3 mb-6"></div>
             <div className="h-64 bg-[#2f2f33] rounded-lg mb-6"></div>
@@ -580,25 +583,27 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
   return (
     <div className="min-h-screen bg-[#232328] ">
-      <header className="sticky top-0 mb-6 bg-[#1a1a1e57] z-40 overflow-hidden animate-fadeInUp border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
-        <div className="max-w-7xl mx-auto px-4 py-1">
-          <div className="flex justify-between items-center px-4 py-1">
-            {/* Logo Section */}
-            <div className="cursor-pointer flex flex-nowrap flex-col" onClick={() => router.push("/")}>
+      <header className="bg-[#1a1a1e2c] sticky top-0 z-40 overflow-hidden animate-fadeInUp border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
+        <div className="max-w-7xl mx-auto py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6">
               <h1 className="text-2xl font-bold text-white">
-                <img src="/icons/logo.png" alt="Pivot Logo" className="ml-2 h-16 w-16 text-blue-400" />
+                <Link href="/">
+                  <img src="/icons/p-lg.png" alt="Pivot Logo" className="ml-2 h-12 w-12 cursor-pointer" />
+                </Link>
               </h1>
             </div>
 
-            {/* Wallet Connect Section */}
-            <div className="flex gap-2 items-center flex-wrap">
-              <WalletSelector />
+            <div className="flex items-center gap-4">
+              <div className="flex gap-2 items-center flex-wrap">
+                <WalletSelector />
+              </div>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto mb-5 pb-6">
+      <div className="max-w-6xl mx-auto mt-12 mb-5 pb-6">
         {/* Market Info Card */}
         <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl mb-5 p-6">
           {/* Market Header Section */}
@@ -923,8 +928,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
                         return priceChange !== 0 ? (
                           <span className={`text-sm ${isPriceIncrease ? "text-emerald-400" : "text-rose-400"}`}>
-                            {isPriceIncrease ? "↑" : "↓"}{" "}
-                            {(Math.abs(priceChange) / 100).toFixed(2)}% 🔒
+                            {isPriceIncrease ? "↑" : "↓"} {(Math.abs(priceChange) / 100).toFixed(2)}% 🔒
                           </span>
                         ) : (
                           <span className="text-gray-400 text-sm">No change 🔒</span>

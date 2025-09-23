@@ -12,6 +12,7 @@ import { createMarket } from "@/app/entry-functions/stake";
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 import { WalletSelector } from "./WalletSelector";
 import { PredictionMarketsAPI } from "../app/serve";
+import Link from "next/link";
 
 interface Message {
   role: "user" | "ai";
@@ -601,13 +602,19 @@ const CreateMarket = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#232328] via-[#1a1a1f] to-[#0f0f14]">
       {" "}
-      <header className="bg-[#1a1a1e57] sticky top-0 z-40 overflow-hidden animate-fadeInUp border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
-        <div className="max-w-7xl mx-auto px-4 py-2">
+      <header className="bg-[#1a1a1e2c] sticky top-0 z-40 overflow-hidden animate-fadeInUp border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
+        <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex justify-between items-center px-4 ">
             {/* Logo Section */}
             <div className="cursor-pointer flex flex-col" onClick={() => router.push("/")}>
               <h1 className="text-2xl font-bold text-white">
-                <img src="/icons/logo.png" alt="Pivot Logo" className="ml-2 h-16 w-16 text-blue-400" />
+              <Link href="/">
+            <img
+              src="/icons/p-lg.png"
+              alt="Pivot Logo"
+              className="ml-2 h-12 w-12 cursor-pointer"
+            />
+          </Link>
               </h1>
             </div>
 

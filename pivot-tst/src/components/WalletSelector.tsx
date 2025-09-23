@@ -38,6 +38,7 @@ import {
   LucideUserCircle2,
   Sparkles,
   User,
+  UserCircle2,
   Wallet,
   Zap,
 } from "lucide-react";
@@ -73,13 +74,13 @@ export function WalletSelector() {
         <DropdownMenuTrigger asChild>
           <Button
             variant="default"
-            className="group relative overflow-hidden bg-[#02834e] font-medium px-4 py-2 rounded-lg hover:shadow-sm hover:shadow-black-900/10 focus:outline-none focus:ring-0 active:outline-none active:ring-0"
+            className="group relative overflow-hidden bg-[#02834e] hover:bg-[#095435] font-medium px-4 py-2 rounded-lg hover:shadow-sm hover:shadow-black-900/10 focus:outline-none focus:ring-0 active:outline-none active:ring-0"
           >
-            <div className="relative flex items-center gap-3">
+            <div className="relative flex items-center  gap-3">
               {/* AI Profile Circle */}
               <div className="relative">
-                <div className="w-6 h-6 rounded-full bg-[#02834e] flex items-center justify-center">
-                <LucideUserCircle className="h-5 w-5 text-white" />
+                <div className="w-6 h-6 rounded-full bg-none flex items-center justify-center">
+                <Wallet className="h-5 w-5 text-white" />
                 </div>
               </div>
 
@@ -88,7 +89,7 @@ export function WalletSelector() {
                 {account?.ansName || truncateAddress(account?.address.toStringLong()) || "Unknown"}
               </span>
 
-              <ChevronDown className="h-4 w-4 text-slate-500 transition-transform group-hover:rotate-180 duration-200" />
+              <ChevronDown className="h-4 w-4 text-slate-200 transition-transform group-hover:rotate-180 duration-200" />
             </div>
           </Button>
         </DropdownMenuTrigger>
@@ -236,7 +237,7 @@ function ConnectWalletDialog({ close }: ConnectWalletDialogProps) {
           {!!installableWallets.length && (
             <Collapsible className="flex flex-col gap-3">
               <CollapsibleTrigger asChild>
-                <Button size="sm" variant="default" className="gap-2 text-gray-300 hover:text-white">
+                <Button size="sm" variant="default" className="gap-2 text-black hover:bg-[#e8eceb69]">
                   More wallets <ChevronDown />
                 </Button>
               </CollapsibleTrigger>
@@ -270,12 +271,12 @@ function WalletRow({ wallet, onConnect }: WalletRowProps) {
         <WalletItem.Name className="text-base font-normal text-white" />
       </div>
       {isInstallRequired(wallet) ? (
-        <Button size="sm" variant="default" asChild className="text-gray-300 hover:text-white">
+        <Button size="sm" variant="default" asChild className="text-black hover:bg-[#e8eceb69]">
           <WalletItem.InstallLink />
         </Button>
       ) : (
         <WalletItem.ConnectButton asChild>
-          <Button size="sm" className="text-white">
+          <Button size="sm" className="text-black hover:bg-[#e8eceb69]">
             Connect
           </Button>
         </WalletItem.ConnectButton>
