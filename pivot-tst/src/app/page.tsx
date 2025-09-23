@@ -699,7 +699,7 @@ export default function PivotMarketApp() {
             <div>
               <h1 className="text-4xl font-bold text-white mb-4">Pivot Markets</h1>
               <p className="text-gray-200 text-lg max-w-2xl">
-                Discover and trade future outcomes with real-time insights in transparent, trustless on-chain markets.
+                Discover and trade future predictions with real-time insights in transparent, trustless on-chain markets.
               </p>
 
               <div className="flex items-center mt-6 gap-4">

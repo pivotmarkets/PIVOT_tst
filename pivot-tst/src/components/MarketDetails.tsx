@@ -8,17 +8,18 @@ import {
   ArrowDown,
   Trophy,
   DollarSign,
-  Heart,
   Users,
   CandlestickChart,
-  BaggageClaim,
   DollarSignIcon,
   Clock,
   TrendingDown,
   TrendingUp,
   User,
+  Calendar,
+  Droplets,
 } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
+import { toast } from "sonner";
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
 import {
   formatTimestamp,
   getLatestTrades,
@@ -26,8 +27,8 @@ import {
   getMarketDetails,
   getUserPositionDetails,
   TradeRecord,
-  UserPosition,
 } from "@/app/view-functions/markets";
+import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 import { WalletSelector } from "./WalletSelector";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
@@ -93,9 +94,13 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "positions" | "activity">("overview");
+  const USDC_ASSET_ADDRESS: string = "0x69091fbab5f7d635ee7ac5098cf0c1efbe31d68fec0f2cd565e8d168daf52832";
+
   const [sellLoading, setSellLoading] = useState<{ [key: string]: boolean }>({});
   const router = useRouter();
   const queryClient = useQueryClient();
+  const config = new AptosConfig({ network: Network.TESTNET });
+  const aptos = new Aptos(config);
   const { signAndSubmitTransaction, account } = useWallet();
 
   useEffect(() => {
@@ -261,8 +266,20 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       await aptosClient().waitForTransaction({
         transactionHash: response.hash,
       });
+      await refetchUSDCBalance();
 
       queryClient.refetchQueries();
+
+      // Correct success toast message
+      toast.success(`Successfully bought ${outcome} position for ${amountUSDC.toFixed(2)} USDC`, {
+        style: {
+          backgroundColor: "#365314",
+          color: "#a3e635",
+          fontWeight: "bold",
+          border: "1px solid #a3e635",
+        },
+        duration: 6000,
+      });
 
       // Refetch market data after buying
       const marketDetails = await getMarketDetails(market.id);
@@ -278,6 +295,18 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       return response;
     } catch (error) {
       console.error("Error buying position:", error);
+
+      // Add error toast
+      toast.error("Failed to buy position. Please try again.", {
+        style: {
+          backgroundColor: "#7f1d1d",
+          color: "#fca5a5",
+          fontWeight: "bold",
+          border: "1px solid #fca5a5",
+        },
+        duration: 6000,
+      });
+
       throw error;
     }
   };
@@ -311,12 +340,69 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       .sort((a, b) => a.timestamp - b.timestamp);
   };
 
-  const formatAmount = (amount: string) => {
-    const num = parseFloat(amount) / 1000000; // Convert from micro units
-    if (num >= 1000000) return `$${(num / 1000000).toFixed(1)}M`;
-    if (num >= 1000) return `$${(num / 1000).toFixed(1)}K`;
-    return `$${num.toFixed(2)}`;
+  const useUSDCBalance = () => {
+    const { account } = useWallet();
+    const [balance, setBalance] = useState<number>(0);
+    const [loading, setLoading] = useState(false);
+
+    const fetchBalance = async () => {
+      if (!account?.address) {
+        setBalance(0);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const balances = await aptos.getCurrentFungibleAssetBalances({
+          options: {
+            where: {
+              owner_address: { _eq: account.address.toString() },
+            },
+          },
+        });
+
+        // Filter for all USDC balances
+        const usdcBalances = balances.filter(
+          (b: any) => b.asset_type.toLowerCase() === USDC_ASSET_ADDRESS.toLowerCase(),
+        );
+
+        let formatted = 0;
+
+        if (usdcBalances.length > 0) {
+          // Find the balance with is_primary: true
+          const primaryBalance = usdcBalances.find((b: any) => b.is_primary === true);
+
+          if (primaryBalance) {
+            formatted = Number(primaryBalance.amount) / 1e6;
+          } else {
+            // Fallback to most recent if no primary found
+            const mostRecentBalance = usdcBalances.sort(
+              (a: any, b: any) =>
+                new Date(b.last_transaction_timestamp).getTime() - new Date(a.last_transaction_timestamp).getTime(),
+            )[0];
+
+            formatted = Number(mostRecentBalance.amount) / 1e6;
+            console.log("No primary balance found, using most recent:", mostRecentBalance);
+          }
+        }
+
+        setBalance(formatted);
+      } catch (error) {
+        console.error("Error fetching USDC balance:", error);
+        setBalance(0);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    useEffect(() => {
+      fetchBalance();
+    }, [account?.address]);
+
+    return { balance, loading, refetch: fetchBalance };
   };
+
+  const { balance, refetch: refetchUSDCBalance } = useUSDCBalance();
 
   const getTradeTypeLabel = (tradeType: number, outcome: any) => {
     // trade_type: 0 = buy, 1 = sell, 2 = ?
@@ -371,16 +457,20 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     return new Date(parseInt(timestamp) * 1000).toLocaleDateString();
   };
 
-  const getTimeLeft = (endTime: string): string => {
-    const endDate = new Date(parseInt(endTime) * 1000);
-    const now = new Date();
-    const timeDiff = endDate.getTime() - now.getTime();
+  function getTimeLeft(endTimeEpoch: string) {
+    const now = Date.now() / 1000; // current time in seconds
+    const secondsLeft = parseInt(endTimeEpoch) - now;
 
-    if (timeDiff <= 0) return "Market closed";
+    if (secondsLeft <= 0) return "Ended";
 
-    const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-    return `${days} days left`;
-  };
+    const days = Math.floor(secondsLeft / (3600 * 24));
+    const hours = Math.floor((secondsLeft % (3600 * 24)) / 3600);
+    const minutes = Math.floor((secondsLeft % 3600) / 60);
+
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+  }
 
   const onSellPositionClick = async (marketId: any, positionId: any, sharesToSell: any, minPrice: number) => {
     if (!account) return;
@@ -398,8 +488,20 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       await aptosClient().waitForTransaction({
         transactionHash: response.hash,
       });
+      await refetchUSDCBalance();
 
       queryClient.refetchQueries();
+
+      // Success toast message
+      toast.success(`Successfully sold ${formatShares(sharesToSell)} shares`, {
+        style: {
+          backgroundColor: "#365314",
+          color: "#a3e635",
+          fontWeight: "bold",
+          border: "1px solid #a3e635",
+        },
+        duration: 6000,
+      });
 
       // Refetch market data after selling
       const marketDetails = await getMarketDetails(market.id);
@@ -413,6 +515,18 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       return response;
     } catch (error) {
       console.error("Error selling position:", error);
+
+      // Error toast message
+      toast.error("Failed to sell position. Please try again.", {
+        style: {
+          backgroundColor: "#7f1d1d",
+          color: "#fca5a5",
+          fontWeight: "bold",
+          border: "1px solid #fca5a5",
+        },
+        duration: 6000,
+      });
+
       throw error;
     }
   };
@@ -431,8 +545,20 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       await aptosClient().waitForTransaction({
         transactionHash: response.hash,
       });
+      await refetchUSDCBalance();
 
       queryClient.refetchQueries();
+
+      // Success toast message
+      toast.success("🎉 Winnings claimed successfully!", {
+        style: {
+          backgroundColor: "#365314",
+          color: "#a3e635",
+          fontWeight: "bold",
+          border: "1px solid #a3e635",
+        },
+        duration: 8000,
+      });
 
       // Refetch market data after claiming
       const marketDetails = await getMarketDetails(market.id);
@@ -448,6 +574,18 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       return response;
     } catch (error) {
       console.error("Error claiming winnings:", error);
+
+      // Error toast message
+      toast.error("Failed to claim winnings. Please check your position and try again.", {
+        style: {
+          backgroundColor: "#7f1d1d",
+          color: "#fca5a5",
+          fontWeight: "bold",
+          border: "1px solid #fca5a5",
+        },
+        duration: 6000,
+      });
+
       throw error;
     }
   };
@@ -603,9 +741,9 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto mt-12 mb-5 pb-6">
+      <div className="max-w-6xl mx-auto mt-12 pb-16">
         {/* Market Info Card */}
-        <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl mb-5 p-6">
+        <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl mb-5 p-6">
           {/* Market Header Section */}
           <div className="mb-6">
             {/* Market title */}
@@ -642,7 +780,8 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   <CandlestickChart className="w-4 h-4 text-gray-400" />
                   <span>{(Number(market.totalVolume) / 1e6).toLocaleString()} USDC</span>
                 </div>
-                <span className="text-gray-500">
+                <span className="text-gray-500 flex gap-2 align-middle items-center">
+                  <Clock className="w-4 h-4" />{" "}
                   {marketDetails.resolved
                     ? `resolved ${new Date(parseInt(marketDetails.endTime) * 1000).toLocaleDateString("en-US", {
                         month: "short",
@@ -912,7 +1051,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
               {/* Probability and Payout Info */}
               <div className="mb-6 space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-400 text-sm">New probability</span>
+                  <span className="text-gray-400 text-sm">Latest probability</span>
                   <div className="flex items-center gap-2">
                     <span className="text-white text-lg font-bold">
                       {side === "YES" ? `${(yesPrice * 100).toFixed(2)}%` : `${(noPrice * 100).toFixed(2)}%`}
@@ -931,7 +1070,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                             {isPriceIncrease ? "↑" : "↓"} {(Math.abs(priceChange) / 100).toFixed(2)}% 🔒
                           </span>
                         ) : (
-                          <span className="text-gray-400 text-sm">No change 🔒</span>
+                          <span className="text-gray-400 text-sm">No change </span>
                         );
                       })()}
                   </div>
@@ -975,7 +1114,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
               <div className="mt-6 flex justify-between items-center text-sm">
                 <span className="text-gray-400">bal:</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-white">0 USDC</span>
+                  <span className="text-white">{balance} USDC</span>
                 </div>
               </div>
             </div>
@@ -983,7 +1122,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         )}
 
         {/* Tab Navigation */}
-        <div className="flex space-x-1 bg-[#2f2f33] border border-gray-700/50 rounded-lg p-1 mb-6">
+        <div className="flex space-x-1 bg-[#2f2f33] border border-gray-700/20 rounded-lg p-1 mb-6">
           <button
             onClick={() => setActiveTab("overview")}
             className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
@@ -1030,42 +1169,64 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         {activeTab === "overview" && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">TVL</h3>
+              <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <DollarSign className="w-5 h-5 text-slate-400" />
+                  <h3 className="text-lg font-semibold text-slate-400">TVL</h3>
+                </div>
                 <div className="text-2xl font-bold text-slate-400">
                   {formatCurrency(marketDetails.totalValueLocked)}
                 </div>
               </div>
-              <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Total Liquidity</h3>
+
+              <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <Droplets className="w-5 h-5 text-slate-400" />
+                  <h3 className="text-lg font-semibold text-slate-400">Total Liquidity</h3>
+                </div>
                 <div className="text-2xl font-bold text-slate-400">{formatCurrency(marketDetails?.totalLiquidity)}</div>
               </div>
-              <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Created</h3>
-                <div className="text-lg font-bold text-gray-300">{formatDate(marketDetails.creationTime)}</div>
+
+              <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <Calendar className="w-5 h-5 text-slate-400" />
+                  <h3 className="text-lg font-semibold text-slate-400">Created</h3>
+                </div>
+                <div className="text-lg font-bold text-slate-400">{formatDate(marketDetails.creationTime)}</div>
               </div>
 
               {/* Additional stats */}
-              <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">YES Shares</h3>
+              <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <TrendingUp className="w-5 h-5 text-green-400" />
+                  <h3 className="text-lg font-semibold text-slate-400">YES Shares</h3>
+                </div>
                 <div className="text-lg font-bold text-green-400">
                   {(parseInt(marketDetails.totalYesShares) / 1000000).toLocaleString()}
                 </div>
               </div>
-              <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">NO Shares</h3>
+
+              <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <TrendingDown className="w-5 h-5 text-red-400" />
+                  <h3 className="text-lg font-semibold text-slate-400">NO Shares</h3>
+                </div>
                 <div className="text-lg font-bold text-red-400">
                   {(parseInt(marketDetails.totalNoShares) / 1000000).toLocaleString()}
                 </div>
               </div>
-              <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Market Ends</h3>
-                <div className="text-lg font-bold text-gray-300">{formatDate(marketDetails.endTime)}</div>
+
+              <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <Clock className="w-5 h-5 text-slate-400" />
+                  <h3 className="text-lg font-semibold text-slate-400">Market Ends</h3>
+                </div>
+                <div className="text-lg font-bold text-slate-400">{formatDate(marketDetails.endTime)}</div>
               </div>
             </div>
 
             {/* Resolution Criteria */}
-            <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
+            <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-6">
               <h3 className="text-lg font-semibold text-white mb-4">Resolution Criteria</h3>
               <div className="text-sm font-bold text-slate-200">{marketDetails.resolutionCriteria}</div>
             </div>
@@ -1076,7 +1237,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         {activeTab === "positions" && (
           <div className="space-y-6">
             {!account?.address ? (
-              <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-8 text-center">
+              <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-8 text-center">
                 <div className="text-gray-400 mb-4">
                   <Wallet className="w-12 h-12 mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">Connect Your Wallet</h3>
@@ -1084,7 +1245,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                 </div>
               </div>
             ) : userPositions.length === 0 ? (
-              <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-8 text-center">
+              <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-8 text-center">
                 <div className="text-gray-400">
                   <BarChart3 className="w-12 h-12 mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">No Positions Yet</h3>
@@ -1094,26 +1255,25 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
             ) : (
               <div className="space-y-4">
                 {/* Position Summary */}
-                <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
-                  <h3 className="text-lg font-semibold text-white mb-4">Position Summary</h3>
+                <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-6">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
                     <div>
-                      <div className="text-2xl font-bold text-blue-400">${totalPositionValue.toFixed(2)}</div>
-                      <div className="text-sm text-gray-400">Total Value</div>
+                      <div className="text-sm text-slate-400 mb-3">Total Value</div>
+                      <div className="text-2xl font-bold text-slate-400">{totalPositionValue.toFixed(2)} USDC</div>
                     </div>
                     <div>
-                      <div className="text-2xl font-bold text-purple-400">{userPositions.length}</div>
-                      <div className="text-sm text-gray-400">Total Positions</div>
+                      <div className="flex items-center justify-center gap-2 mb-1"></div>
+                      <div className="text-sm text-slate-400 mb-3">Total Positions</div>
+                      <div className="text-2xl font-bold text-slate-400">{userPositions.length}</div>
                     </div>
                     <div>
-                      <div className="text-2xl font-bold text-gray-300">
+                      <div className="text-sm text-slate-400 mb-3">Total Shares</div>
+                      <div className="text-2xl font-bold text-slate-400">
                         {formatShares(userPositions.reduce((sum, pos) => sum + pos.shares, 0))}
                       </div>
-                      <div className="text-sm text-gray-400">Total Shares</div>
                     </div>
                   </div>
                 </div>
-
                 {/* Individual Positions */}
                 {userPositions.map((position, index) => {
                   const pnl = calculatePnL(position);
@@ -1133,10 +1293,8 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   const marketResolution = marketDetails.resolved ? getResolutionOutcome(marketDetails.outcome) : null;
                   const positionWon = marketDetails.resolved && position.outcome === marketResolution;
 
-                  console.log("position--", position);
-
                   return (
-                    <div key={index} className="bg-[#2f2f33] border border-gray-700/80 rounded-xl p-6">
+                    <div key={index} className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-6">
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex items-center gap-3">
                           <div
@@ -1170,7 +1328,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                             className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
                               isLoading
                                 ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                                : "bg-[#008259] hover:bg-blue-500 text-white"
+                                : "bg-[#008259] hover:bg-emerald-500/70 text-white"
                             }`}
                           >
                             {isLoading ? (
@@ -1245,7 +1403,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                         </div>
                       </div>
 
-                      <div className="mt-4 pt-4 border-t border-gray-700/50">
+                      <div className="mt-4 pt-4 border-t border-gray-700/20">
                         <div className="flex justify-between text-xs text-gray-500">
                           <span>Position opened: {new Date(position.timestamp * 1000).toLocaleDateString()}</span>
                           <span>
@@ -1267,7 +1425,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
             {/* Market Analytics Summary */}
 
             {/* Recent Trades */}
-            <div className="bg-[#2f2f33] border border-gray-700/50 rounded-xl p-6">
+            <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-6">
               {latestTrades && Array.isArray(latestTrades) && latestTrades.length === 0 ? (
                 <div className="text-center py-8 text-slate-500">
                   <Activity className="w-12 h-12 mx-auto mb-4 opacity-50" />
@@ -1289,7 +1447,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                       return (
                         <div
                           key={trade.tradeId || index}
-                          className="flex items-center justify-between p-4 rounded-lg bg-[#2f2f33] border border-gray-700/50"
+                          className="flex items-center justify-between p-4 rounded-lg bg-[#2f2f33] border border-gray-700/20"
                         >
                           <div className="flex items-center space-x-3">
                             {/* Action Icon */}

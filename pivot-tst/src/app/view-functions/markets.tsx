@@ -107,8 +107,6 @@ export const getUserPositions = async (marketId: number, userAddress: string): P
       },
     });
 
-    console.log("the response", response);
-
     // Flatten [["0", "2"]] → ["0","2"] → [0,2]
     return response.flat().map((id) => Number(id));
   } catch (error: any) {

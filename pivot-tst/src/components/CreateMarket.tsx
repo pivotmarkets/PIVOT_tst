@@ -156,8 +156,6 @@ const CreateMarket = () => {
           },
         });
 
-        console.log("balances:", balances);
-
         // filter for USDC
         const usdcBalance = balances.find((b: any) => b.asset_type.toLowerCase() === USDC_ASSET_ADDRESS.toLowerCase());
 
@@ -182,9 +180,7 @@ const CreateMarket = () => {
 
   const getTestnetUSDC = async (account: { address: any }) => {
     try {
-      // This would depend on how the testnet USDC is distributed
-      // You might need to call a faucet function or mint function
-      const response = await fetch("https://fullnode.testnet.aptoslabs.com/v1/view", {
+  const response = await fetch("https://fullnode.testnet.aptoslabs.com/v1/view", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

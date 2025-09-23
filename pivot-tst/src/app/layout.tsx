@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 import { ReactQueryProvider } from "@/components/ReactQueryProvider";
 import { WalletProvider } from "@/components/WalletProvider";
-import { Toaster } from "@/components/ui/toaster";
+import { Toaster } from 'sonner';
 import { WrongNetworkAlert } from "@/components/WrongNetworkAlert";
 
 import "./globals.css";
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
       { url: "/icons/logo.png", sizes: "192x192", type: "image/png" },
       { url: "/icons/logo.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: { url: "/icons/logo.png", sizes: "192x192", type: "image/png" },
+    apple: { url: "/icons/Pivot.svg", sizes: "192x192", type: "image/png" },
   },
 };
 
@@ -30,6 +30,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+           <Toaster />
       <body className="bg-[#1a1a1e57] text-white min-h-screen flex flex-col">
         <WalletProvider>
           <ReactQueryProvider>
