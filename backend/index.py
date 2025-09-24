@@ -14,6 +14,8 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import google.generativeai as genai
 from dotenv import load_dotenv
+import certifi
+import ssl
 
 load_dotenv()
 
@@ -56,6 +58,10 @@ class NewsItem:
     suggested_market_questions: List[str]
     timestamp: str
     real_data_context: Dict[str, Any]  # New field for real-time context
+    subreddit: Optional[str] = None  # Add subreddit field for Reddit posts
+    score: Optional[int] = None  # Add score field for Reddit engagement
+    num_comments: Optional[int] = None  # Add comments count
+    url: Optional[str] = None  # Add URL field
 
 class RealTimeDataProvider:
     """Fetches real-time data from various sources including social media like Reddit"""
@@ -157,6 +163,68 @@ class RealTimeDataProvider:
             return trending_posts[:20]  # Increased for better sentiment analysis
         except Exception as e:
             logger.error(f"Error fetching Reddit trends: {e}")
+            return []
+    
+    async def get_reddit_trending_by_category(self, categories: List[str] = None, posts_per_category: int = 5) -> List[Dict[str, Any]]:
+        """Get trending posts from specific subreddits mapped to categories"""
+        category_subreddit_map = {
+            'crypto': ['cryptocurrency', 'bitcoin', 'ethereum', 'defi'],
+            'tech': ['technology', 'programming', 'futurology', 'startups'],
+            'politics': ['politics', 'worldnews', 'news'],
+            'sports': ['sports', 'nfl', 'nba', 'soccer', 'baseball']
+        }
+        
+        if categories is None:
+            categories = ['crypto', 'tech', 'politics', 'sports']
+        
+        try:
+            all_trending_posts = []
+            # Create SSL context with certifi's CA bundle
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+            async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:
+                for category in categories:
+                    subreddits = category_subreddit_map.get(category, [category])
+                    category_posts = []
+                    
+                    for subreddit in subreddits:
+                        url = f"https://www.reddit.com/r/{subreddit}/hot.json?limit={posts_per_category}"
+                        headers = {'User-Agent': Config.REDDIT_USER_AGENT}
+                        
+                        try:
+                            async with session.get(url, headers=headers) as response:
+                                if response.status == 200:
+                                    data = await response.json()
+                                    posts = data['data']['children']
+                                    for post in posts:
+                                        post_data = post['data']
+                                        category_posts.append({
+                                            'title': post_data['title'],
+                                            'score': post_data['score'],
+                                            'subreddit': subreddit,
+                                            'category': category,
+                                            'created_utc': post_data['created_utc'],
+                                            'num_comments': post_data['num_comments'],
+                                            'url': f"https://reddit.com{post_data['permalink']}",
+                                            'selftext': post_data.get('selftext', '')[:500],
+                                            'author': post_data.get('author', 'unknown'),
+                                            'upvote_ratio': post_data.get('upvote_ratio', 0.5)
+                                        })
+                                else:
+                                    logger.error(f"Reddit API returned status {response.status} for r/{subreddit}")
+                        except Exception as e:
+                            logger.error(f"Error fetching from r/{subreddit}: {e}")
+                            continue
+                    
+                    # Sort by score and take top posts for this category
+                    category_posts.sort(key=lambda x: x['score'], reverse=True)
+                    all_trending_posts.extend(category_posts[:posts_per_category])
+        
+            # Sort all posts by score
+            all_trending_posts.sort(key=lambda x: x['score'], reverse=True)
+            return all_trending_posts
+            
+        except Exception as e:
+            logger.error(f"Error fetching Reddit trending by category: {e}")
             return []
     
     async def get_news_headlines(self, categories: List[str] = None) -> List[Dict[str, Any]]:
@@ -349,67 +417,102 @@ Return as valid JSON array of objects with exactly these keys.
             return self._fallback_suggestions(query)
     
     async def get_trending_news_async(self, categories: List[str] = None, limit: int = 10) -> List[NewsItem]:
-        """Fetch and process real trending news with AI enhancement"""
+        """Fetch and process real trending news from Reddit with AI enhancement"""
         try:
-            # Fetch real data
-            news_headlines = await self.data_provider.get_news_headlines(categories)
-            reddit_trends = await self.data_provider.get_reddit_trends()
+            # Map traditional news categories to our Reddit categories
+            reddit_categories = []
+            if categories:
+                for cat in categories:
+                    if cat.lower() in ['cryptocurrency', 'crypto', 'bitcoin']:
+                        reddit_categories.append('crypto')
+                    elif cat.lower() in ['technology', 'tech', 'programming']:
+                        reddit_categories.append('tech')
+                    elif cat.lower() in ['politics', 'worldnews', 'news']:
+                        reddit_categories.append('politics')
+                    elif cat.lower() in ['sports', 'nfl', 'nba', 'soccer']:
+                        reddit_categories.append('sports')
             
-            real_context = {
-                'news_headlines': news_headlines,
-                'reddit_trends': reddit_trends,
-                'timestamp': datetime.now().isoformat()
-            }
+            if not reddit_categories:
+                reddit_categories = ['crypto', 'tech', 'politics', 'sports']
             
-            if not self.gemini_client:
-                return self._fallback_news(real_context)
-            
-            # Use Gemini to process and generate NewsItems based on real data
-            context_str = self._build_context_string(real_context)
-            
-            current_date = datetime.now().strftime('%Y-%m-%d')
-            categories_str = ", ".join(categories or ['business', 'technology', 'politics', 'sports'])
-            
-            prompt = f"""
-Process the following real-time data to generate {limit} trending news items for {current_date} in categories: {categories_str}.
-
-REAL-TIME DATA:
-{context_str}
-
-For each item (derived strictly from the data):
-- title: Engaging headline from real news/Reddit
-- summary: 2-3 sentence summary based on actual content
-- category: Matching category
-- impact_level: high/medium/low based on engagement
-- market_potential: 0.1-1.0 for prediction market suitability
-- suggested_market_questions: 2-3 yes/no questions inspired by the item
-- timestamp: From the data in YYYY-MM-DD HH:MM
-
-Return as valid JSON array of objects.
-"""
-            
-            response = self.gemini_client.generate_content(
-                prompt,
-                generation_config={
-                    "temperature": 0.7,
-                    "max_output_tokens": 2500,
-                    "response_mime_type": "application/json"
-                }
+            # Fetch Reddit trending posts by category
+            reddit_posts = await self.data_provider.get_reddit_trending_by_category(
+                reddit_categories, posts_per_category=max(3, limit // len(reddit_categories))
             )
             
-            content = response.text
-            content = self._clean_json_response(content)
-            
-            news_data = json.loads(content)
+            # Process Reddit posts into NewsItems
             news_items = []
-            for data in news_data:
-                data['real_data_context'] = real_context
-                news_items.append(NewsItem(**data))
+            current_time = datetime.now()
             
-            return news_items[:limit]
+            for post in reddit_posts[:limit]:
+                # Convert UTC timestamp to readable format
+                post_time = datetime.fromtimestamp(post['created_utc'])
+                time_ago = current_time - post_time
+                
+                if time_ago.days > 0:
+                    time_str = f"{time_ago.days}d ago"
+                elif time_ago.seconds > 3600:
+                    time_str = f"{time_ago.seconds // 3600}h ago"
+                else:
+                    time_str = f"{time_ago.seconds // 60}m ago"
+                
+                # Determine impact level based on engagement
+                if post['score'] > 5000 or post['num_comments'] > 500:
+                    impact_level = "high"
+                elif post['score'] > 1000 or post['num_comments'] > 100:
+                    impact_level = "medium"
+                else:
+                    impact_level = "low"
+                
+                # Calculate market potential based on engagement and category
+                market_potential = min(1.0, (post['score'] / 10000 + post['num_comments'] / 1000) * 0.8)
+                if post['category'] in ['crypto', 'tech']:
+                    market_potential = min(1.0, market_potential + 0.2)
+                
+                # Generate suggested market questions
+                suggested_questions = [
+                    f"Will this Reddit post reach 10k upvotes within 24 hours?",
+                    f"Will the topic discussed become a major news story this week?"
+                ]
+                
+                if post['category'] == 'crypto':
+                    suggested_questions.append("Will this impact crypto prices by >5% this week?")
+                elif post['category'] == 'tech':
+                    suggested_questions.append("Will this tech trend gain mainstream adoption?")
+                elif post['category'] == 'politics':
+                    suggested_questions.append("Will this political event affect election outcomes?")
+                elif post['category'] == 'sports':
+                    suggested_questions.append("Will this sports news affect team performance?")
+                
+                # Create summary from title and selftext
+                summary = post['title']
+                if post.get('selftext') and len(post['selftext']) > 50:
+                    summary += f" - {post['selftext'][:200]}..."
+                
+                news_item = NewsItem(
+                    title=post['title'],
+                    summary=summary,
+                    category=post['category'],
+                    impact_level=impact_level,
+                    market_potential=market_potential,
+                    suggested_market_questions=suggested_questions[:3],
+                    timestamp=post_time.strftime('%Y-%m-%d %H:%M'),
+                    subreddit=post['subreddit'],
+                    score=post['score'],
+                    num_comments=post['num_comments'],
+                    url=post['url'],
+                    real_data_context={
+                        'reddit_post': post,
+                        'time_ago': time_str,
+                        'upvote_ratio': post.get('upvote_ratio', 0.5)
+                    }
+                )
+                news_items.append(news_item)
+            
+            return news_items
             
         except Exception as e:
-            logger.error(f"Enhanced news generation failed: {e}")
+            logger.error(f"Enhanced Reddit trending news generation failed: {e}")
             return self._fallback_news({})
     
     def _build_context_string(self, context: Dict[str, Any]) -> str:
@@ -557,12 +660,15 @@ class EnhancedPredictionAPI:
             try:
                 if request.method == 'POST':
                     data = request.json or {}
-                    categories = data.get('categories')
-                    limit = data.get('limit', 10)
+                    categories = data.get('categories', ['crypto', 'tech', 'politics', 'sports'])
+                    limit = data.get('limit', 15)
                 else:
                     categories_param = request.args.get('categories')
-                    categories = [cat.strip() for cat in categories_param.split(',')] if categories_param else None
-                    limit = int(request.args.get('limit', 10))
+                    if categories_param:
+                        categories = [cat.strip() for cat in categories_param.split(',')]
+                    else:
+                        categories = ['crypto', 'tech', 'politics', 'sports']
+                    limit = int(request.args.get('limit', 15))
                 
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
@@ -573,16 +679,80 @@ class EnhancedPredictionAPI:
                 finally:
                     loop.close()
                 
+                # Group by category for better organization
+                categorized_news = {}
+                for item in news_items:
+                    if item.category not in categorized_news:
+                        categorized_news[item.category] = []
+                    categorized_news[item.category].append(asdict(item))
+                
                 return jsonify({
                     'success': True,
                     'timestamp': datetime.now().isoformat(),
                     'news_count': len(news_items),
-                    'categories': categories or ["all"],
+                    'categories': categories,
                     'trending_news': [asdict(item) for item in news_items],
-                    'note': 'News derived from real-time APIs and social media'
+                    'categorized_news': categorized_news,
+                    'note': 'Trending topics fetched from Reddit subreddits: crypto, tech, politics, sports',
+                    'data_sources': {
+                        'crypto': ['r/cryptocurrency', 'r/bitcoin', 'r/ethereum', 'r/defi'],
+                        'tech': ['r/technology', 'r/programming', 'r/futurology', 'r/startups'],
+                        'politics': ['r/politics', 'r/worldnews', 'r/news'],
+                        'sports': ['r/sports', 'r/nfl', 'r/nba', 'r/soccer', 'r/baseball']
+                    }
                 })
             except Exception as e:
                 logger.error(f"Error: {e}")
+                return jsonify({'success': False, 'error': str(e)}), 500
+        
+        @self.app.route('/api/reddit/trending', methods=['GET'])
+        def get_reddit_trending():
+            """Get raw Reddit trending posts by category"""
+            try:
+                categories = request.args.get('categories', 'crypto,tech,politics,sports').split(',')
+                posts_per_category = int(request.args.get('posts_per_category', 5))
+                
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    reddit_posts = loop.run_until_complete(
+                        self.ai_assistant.data_provider.get_reddit_trending_by_category(
+                            [cat.strip() for cat in categories], posts_per_category
+                        )
+                    )
+                finally:
+                    loop.close()
+                
+                # Group posts by category
+                categorized_posts = {}
+                for post in reddit_posts:
+                    category = post['category']
+                    if category not in categorized_posts:
+                        categorized_posts[category] = []
+                    
+                    # Add human-readable time
+                    post_time = datetime.fromtimestamp(post['created_utc'])
+                    time_ago = datetime.now() - post_time
+                    if time_ago.days > 0:
+                        post['time_ago'] = f"{time_ago.days}d ago"
+                    elif time_ago.seconds > 3600:
+                        post['time_ago'] = f"{time_ago.seconds // 3600}h ago"
+                    else:
+                        post['time_ago'] = f"{time_ago.seconds // 60}m ago"
+                    
+                    categorized_posts[category].append(post)
+                
+                return jsonify({
+                    'success': True,
+                    'timestamp': datetime.now().isoformat(),
+                    'total_posts': len(reddit_posts),
+                    'categories': list(categorized_posts.keys()),
+                    'reddit_posts': reddit_posts,
+                    'categorized_posts': categorized_posts,
+                    'note': 'Raw Reddit posts from trending subreddits'
+                })
+            except Exception as e:
+                logger.error(f"Error fetching Reddit trending: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
         
         @self.app.route('/api/market/search-suggestions', methods=['POST'])
@@ -669,16 +839,24 @@ class EnhancedPredictionAPI:
                     'alphavantage': bool(Config.ALPHA_VANTAGE_API_KEY),
                     'reddit': bool(Config.REDDIT_USER_AGENT)
                 },
-                'note': 'Enhanced with real-time data'
+                'supported_categories': ['crypto', 'tech', 'politics', 'sports'],
+                'reddit_sources': {
+                    'crypto': ['cryptocurrency', 'bitcoin', 'ethereum', 'defi'],
+                    'tech': ['technology', 'programming', 'futurology', 'startups'],
+                    'politics': ['politics', 'worldnews', 'news'],
+                    'sports': ['sports', 'nfl', 'nba', 'soccer', 'baseball']
+                },
+                'note': 'Enhanced with real-time Reddit data'
             })
     
     def run(self, host='0.0.0.0', port=8000, debug=False):
-        logger.info(f"Starting Enhanced Server on {host}:{port}")
+        logger.info(f"Starting Enhanced Reddit Trending Server on {host}:{port}")
         logger.info(f"Integrations: Gemini {'✓' if Config.GEMINI_API_KEY else '✗'}, NewsAPI {'✓' if Config.NEWS_API_KEY else '✗'}, AlphaVantage {'✓' if Config.ALPHA_VANTAGE_API_KEY else '✗'}")
-        logger.info("Features: Real-time crypto/stocks/news/Reddit sentiment")
+        logger.info("Features: Real-time Reddit trending from crypto/tech/politics/sports subreddits")
+        logger.info("Supported categories: crypto, tech, politics, sports")
         
-        if not all([Config.GEMINI_API_KEY, Config.NEWS_API_KEY]):
-            logger.warning("Missing API keys! Set GEMINI_API_KEY and NEWS_API_KEY.")
+        if not Config.GEMINI_API_KEY:
+            logger.warning("Missing GEMINI_API_KEY! AI features will be limited.")
         
         self.app.run(host=host, port=port, debug=debug)
 

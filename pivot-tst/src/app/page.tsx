@@ -21,6 +21,8 @@ import {
   SearchIcon,
   Loader,
   Send,
+  ScanEye,
+  ScanEyeIcon,
 } from "lucide-react";
 import { WalletSelector } from "../components/WalletSelector";
 import { useRouter } from "next/navigation";
@@ -33,13 +35,55 @@ import {
 } from "./view-functions/markets";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import MarketDetailPage from "@/components/MarketDetails";
-import { PlusIcon } from "@heroicons/react/24/solid";
-import { NewsItem, PredictionMarketsResponse, QuickPredictionResponse, TrendingNewsResponse } from "./serve";
+import { EyeDropperIcon, PlusIcon } from "@heroicons/react/24/solid";
+import { PredictionMarketsResponse, QuickPredictionResponse } from "./serve";
 
 interface AIAssistantPanelProps {
   isVisible: boolean;
   onClose: () => void;
   apiBaseUrl?: string;
+}
+
+interface NewsItem {
+  summary: string;
+  timestamp: string;
+  title: string;
+  category: string;
+  impact_level: string;
+  market_potential: number;
+  num_comments: number;
+  score: number;
+  subreddit: string;
+  url: string;
+  suggested_market_questions: string[];
+  real_data_context: {
+    reddit_post: {
+      author: string;
+      category: string;
+      created_utc: number;
+      num_comments: number;
+      score: number;
+      selftext: string;
+      subreddit: string;
+      title: string;
+      upvote_ratio: number;
+      url: string;
+    };
+    time_ago: string;
+    upvote_ratio: number;
+  };
+}
+
+interface TrendingNewsResponse {
+  error: string;
+  success: boolean;
+  timestamp: string;
+  news_count: number;
+  categories: string[];
+  trending_news: NewsItem[];
+  categorized_news: { [category: string]: NewsItem[] };
+  note: string;
+  data_sources: { [category: string]: string[] };
 }
 
 const categories = ["All markets", "Crypto", "Technology", "Climate", "Space", "Finance", "Politics"];
@@ -85,7 +129,7 @@ class PredictionMarketsAPI {
       }
 
       const data = await response.json();
-      
+
       if (data.session_id) {
         this.sessionId = data.session_id;
       }
@@ -241,20 +285,22 @@ const MarketCard = ({ market }: any) => {
   );
 };
 
-const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ 
-  isVisible, 
-  onClose, 
-  apiBaseUrl = "http://localhost:8000" 
+const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
+  isVisible,
+  onClose,
+  apiBaseUrl = "http://localhost:8000",
 }) => {
   const [api] = useState(() => new PredictionMarketsAPI(apiBaseUrl));
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [messages, setMessages] = useState<Array<{
-    type: 'user' | 'assistant' | 'insight';
-    content: string;
-    data?: any;
-    timestamp: Date;
-  }>>([]);
+  const [messages, setMessages] = useState<
+    Array<{
+      type: "user" | "assistant" | "insight";
+      content: string;
+      data?: any;
+      timestamp: Date;
+    }>
+  >([]);
   const [insights, setInsights] = useState<NewsItem[]>([]);
 
   // Load initial insights when panel opens
@@ -267,28 +313,36 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
   const loadInitialInsights = async () => {
     try {
       setIsLoading(true);
-      const response = await api.getTrendingNews(['politics', 'crypto', 'technology', 'economics'], 5);
-      
+      const response = await api.getTrendingNews(["politics", "crypto", "technology", "economics"], 20);
+
       if (response.success && response.trending_news) {
         setInsights(response.trending_news);
-        
-        // Add initial insight message
-        const insightMessage = {
-          type: 'insight' as const,
-          content: `Found ${response.trending_news.length} trending market insights. Here are the top opportunities:`,
-          data: response.trending_news,
-          timestamp: new Date()
-        };
-        
-        setMessages([insightMessage]);
+
+        // Create messages for each news item, focusing on summary and timestamp
+        const insightMessages = response.trending_news.map((item: NewsItem) => ({
+          type: "insight" as const,
+          content: `BREAKING: ${item.summary} (Posted: ${item.timestamp})`,
+          data: {
+            summary: item.summary,
+            timestamp: item.timestamp,
+          },
+          timestamp: new Date(),
+        }));
+
+        // Combine intro message with individual news item messages
+        setMessages(insightMessages);
+      } else {
+        throw new Error("No trending news found in response");
       }
     } catch (error) {
-      console.error('Failed to load initial insights:', error);
-      setMessages([{
-        type: 'assistant',
-        content: 'Unable to load market insights. Please check your connection to the prediction markets API.',
-        timestamp: new Date()
-      }]);
+      console.error("Failed to load initial insights:", error);
+      setMessages([
+        {
+          type: "assistant",
+          content: "Unable to load market insights. Please check your connection to the prediction markets API.",
+          timestamp: new Date(),
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
@@ -298,89 +352,86 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
     if (!input.trim() || isLoading) return;
 
     const userMessage = {
-      type: 'user' as const,
+      type: "user" as const,
       content: input,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
 
     try {
       // Determine the type of query and call appropriate endpoint
       const query = input.toLowerCase();
-      
-      if (query.includes('predict') || query.includes('probability') || query.includes('will')) {
+
+      if (query.includes("predict") || query.includes("probability") || query.includes("will")) {
         // Quick prediction query
         const response = await api.getQuickPrediction(input);
-        
+
         if (response.success) {
           const assistantMessage = {
-            type: 'assistant' as const,
-            content: `${response.answer}\n\nProbability: ${response.probability}\nConfidence: ${response.confidence}\n\nKey factors: ${response.factors.join(', ')}`,
+            type: "assistant" as const,
+            content: `${response.answer}\n\nProbability: ${response.probability}\nConfidence: ${response.confidence}\n\nKey factors: ${response.factors.join(", ")}`,
             data: response,
-            timestamp: new Date()
+            timestamp: new Date(),
           };
-          setMessages(prev => [...prev, assistantMessage]);
+          setMessages((prev) => [...prev, assistantMessage]);
         } else {
-          throw new Error(response.error || 'Prediction failed');
+          throw new Error(response.error || "Prediction failed");
         }
-        
-      } else if (query.includes('market') || query.includes('suggest') || query.includes('create')) {
+      } else if (query.includes("market") || query.includes("suggest") || query.includes("create")) {
         // Market suggestion query
         const response = await api.generatePredictionMarkets(input, 3);
-        
+
         if (response.success) {
           const assistantMessage = {
-            type: 'assistant' as const,
+            type: "assistant" as const,
             content: `Found ${response.count} market suggestions for: "${response.query}"`,
             data: response.prediction_markets,
-            timestamp: new Date()
+            timestamp: new Date(),
           };
-          setMessages(prev => [...prev, assistantMessage]);
+          setMessages((prev) => [...prev, assistantMessage]);
         } else {
-          throw new Error(response.error || 'Market generation failed');
+          throw new Error(response.error || "Market generation failed");
         }
-        
       } else {
         // General news/trending query
         const categories = [];
-        if (query.includes('crypto')) categories.push('crypto');
-        if (query.includes('tech')) categories.push('technology');
-        if (query.includes('politic')) categories.push('politics');
-        if (query.includes('sport')) categories.push('sports');
-        if (query.includes('economic')) categories.push('economics');
-        
+        if (query.includes("crypto")) categories.push("crypto");
+        if (query.includes("tech")) categories.push("technology");
+        if (query.includes("politic")) categories.push("politics");
+        if (query.includes("sport")) categories.push("sports");
+        if (query.includes("economic")) categories.push("economics");
+
         const response = await api.getTrendingNews(categories.length > 0 ? categories : null, 5);
-        
+
         if (response.success) {
           const assistantMessage = {
-            type: 'assistant' as const,
+            type: "assistant" as const,
             content: `Here are ${response.news_count} trending news items that could become prediction markets:`,
             data: response.trending_news,
-            timestamp: new Date()
+            timestamp: new Date(),
           };
-          setMessages(prev => [...prev, assistantMessage]);
+          setMessages((prev) => [...prev, assistantMessage]);
         } else {
-          throw new Error(response.error || 'News fetch failed');
+          throw new Error(response.error || "News fetch failed");
         }
       }
-      
     } catch (error) {
       const errorMessage = {
-        type: 'assistant' as const,
-        content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
-        timestamp: new Date()
+        type: "assistant" as const,
+        content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
+        timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
-      setInput('');
+      setInput("");
     }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
@@ -389,24 +440,25 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
   if (!isVisible) return null;
 
   return (
-    <div className="fixed right-4 top-20 bottom-4 w-96 bg-[#2f2f33]/95 backdrop-blur-lg border border-[#008259]/30 rounded-lg z-50 flex flex-col shadow-2xl">
-      <div className="flex items-center justify-between p-4 border-b border-[#008259]/30">
+    <div className="fixed right-4 top-20 bottom-4 w-96 bg-[#2f2f33]/95 backdrop-blur-sm border border-[#2f2f33]/20 rounded-lg z-50 flex flex-col shadow-xl">
+      <div className="flex items-center justify-between p-4 border-b border-[#2f2f33]/20">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-[#008259]" />
-          <h3 className="text-white font-medium">AI Market Assistant</h3>
-          {api.sessionId && (
-            <span className="text-xs text-[#008259]">●</span>
-          )}
+          <ScanEyeIcon className="w-5 h-5 text-[#008259]" />
+          <h3 className="text-white font-medium">Trending Topics</h3>
+          {api.sessionId && <span className="text-xs text-[#008259]">●</span>}
         </div>
-        <button 
-          onClick={onClose} 
+        <button
+          onClick={onClose}
           className="text-gray-400 hover:text-white transition-colors text-xl hover:bg-[#2f2f33] w-6 h-6 rounded flex items-center justify-center"
         >
           ×
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div
+        className="flex-1 overflow-y-auto  p-4 space-y-4"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
         {isLoading && messages.length === 0 && (
           <div className="flex items-center justify-center p-8">
             <Loader className="w-6 h-6 text-[#008259] animate-spin" />
@@ -414,39 +466,29 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
         )}
 
         {messages.map((message, index) => (
-          <div key={index} className={`${message.type === 'user' ? 'ml-4' : 'mr-4'}`}>
-            <div className={`rounded-lg p-3 ${
-              message.type === 'user' 
-                ? 'bg-[#008259] text-white ml-auto max-w-[80%]' 
-                : message.type === 'insight'
-                ? 'bg-[#008259]/20 border border-[#008259]/40 text-[#008259]'
-                : 'bg-[#2f2f33] text-gray-100 border border-[#008259]/20'
-            }`}>
-              <div className="text-sm mb-1">
-                {message.content}
-              </div>
-              
+          <div key={index} className={`${message.type === "user" ? "ml-4" : "mr-4"}`}>
+            <div
+              className={`rounded-lg p-3 ${
+                message.type === "user"
+                  ? "bg-[#008259] text-white ml-auto max-w-[80%]"
+                  : message.type === "insight"
+                    ? "bg-[#008259]/20 border border-[#008259]/40 text-[#008259]"
+                    : "bg-[#2f2f33] text-gray-100 border border-[#008259]/20"
+              }`}
+            >
+              <div className="text-sm mb-1">{message.content}</div>
+
               {/* Render specific data based on message type */}
               {message.data && Array.isArray(message.data) && (
                 <div className="mt-2 space-y-2">
                   {message.data.slice(0, 3).map((item: any, idx: number) => (
                     <div key={idx} className="bg-black/30 rounded p-2 text-xs border border-[#008259]/10">
-                      {item.title && (
-                        <div className="font-medium text-[#008259] mb-1">{item.title}</div>
-                      )}
-                      {item.question && (
-                        <div className="font-medium text-[#008259] mb-1">{item.question}</div>
-                      )}
-                      {item.summary && (
-                        <div className="text-gray-300 mb-1">{item.summary}</div>
-                      )}
-                      {item.description && (
-                        <div className="text-gray-300 mb-1">{item.description}</div>
-                      )}
+                      {item.title && <div className="font-medium text-[#008259] mb-1">{item.title}</div>}
+                      {item.question && <div className="font-medium text-[#008259] mb-1">{item.question}</div>}
+                      {item.summary && <div className="text-gray-300 mb-1">{item.summary}</div>}
+                      {item.description && <div className="text-gray-300 mb-1">{item.description}</div>}
                       {item.ai_probability && (
-                        <div className="text-[#008259]">
-                          Probability: {(item.ai_probability * 100).toFixed(1)}%
-                        </div>
+                        <div className="text-[#008259]">Probability: {(item.ai_probability * 100).toFixed(1)}%</div>
                       )}
                       {item.market_potential && (
                         <div className="text-[#008259]/80">
@@ -457,10 +499,8 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
                   ))}
                 </div>
               )}
-              
-              <div className="text-xs text-gray-400 mt-2">
-                {message.timestamp.toLocaleTimeString()}
-              </div>
+
+              <div className="text-xs text-gray-400 mt-2">{message.timestamp.toLocaleTimeString()}</div>
             </div>
           </div>
         ))}
@@ -473,7 +513,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
         )}
       </div>
 
-      <div className="p-4 border-t border-[#008259]/30">
+      {/* <div className="p-4 border-t border-[#008259]/30">
         <div className="flex gap-2 mb-2">
           <button
             onClick={() => setInput("What are the trending crypto predictions today?")}
@@ -508,7 +548,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
           </button>
         </div>
 
-      </div>
+      </div> */}
     </div>
   );
 };
@@ -669,12 +709,11 @@ export default function PivotMarketApp() {
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setShowAIAssistant(!showAIAssistant)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
-                  showAIAssistant ? "bg-[#008259] text-white" : "bg-[#2f2f33] text-gray-300 hover:bg-gray-700"
-                }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 bg-[#2f2f33] text-gray-300 hover:bg-gray-700"
+                `}
               >
-                <Sparkles className="w-4 h-4" />
-                AI Assistant
+                <ScanEye className="w-4 h-4" />
+                Insights
               </button>
 
               <div className="flex gap-2 items-center flex-wrap">
@@ -699,7 +738,8 @@ export default function PivotMarketApp() {
             <div>
               <h1 className="text-4xl font-bold text-white mb-4">Pivot Markets</h1>
               <p className="text-gray-200 text-lg max-w-2xl">
-                Discover and trade future predictions with real-time insights in transparent, trustless on-chain markets.
+                Discover and trade future predictions with real-time insights in transparent, trustless on-chain
+                markets.
               </p>
 
               <div className="flex items-center mt-6 gap-4">

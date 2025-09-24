@@ -17,6 +17,7 @@ import {
   User,
   Calendar,
   Droplets,
+  CheckCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
@@ -91,6 +92,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const [priceHistory, setPriceHistory] = useState<any>([]);
   const [latestTrades, setLatestTrades] = useState<any>([]);
   const [marketAnalytics, setMarketAnalytics] = useState<any>(null);
+  const [claimedPositions, setClaimedPositions] = useState<Set<string>>(new Set());
 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "positions" | "activity">("overview");
@@ -115,6 +117,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         fetchPriceHistory();
         if (marketDetails) {
           setMarketDetails(marketDetails as any);
+          console.log("marketDetails:", marketDetails);
         }
 
         // 2. Fetch user positions if wallet connected
@@ -273,10 +276,10 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       // Correct success toast message
       toast.success(`Successfully bought ${outcome} position for ${amountUSDC.toFixed(2)} USDC`, {
         style: {
-          backgroundColor: "#365314",
-          color: "#a3e635",
+          backgroundColor: "#064e3b",
+          color: "#6ee7b7",
           fontWeight: "bold",
-          border: "1px solid #a3e635",
+          border: "1px solid #10b981",
         },
         duration: 6000,
       });
@@ -405,11 +408,24 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const { balance, refetch: refetchUSDCBalance } = useUSDCBalance();
 
   const getTradeTypeLabel = (tradeType: number, outcome: any) => {
-    // trade_type: 0 = buy, 1 = sell, 2 = ?
-    const action = tradeType === 0 ? "Bought" : tradeType === 1 ? "Bought" : tradeType === 2 ? "Sold" : "Funded";
+    // trade_type: 1 = buy, 2 = sell, 3 = add liquidity, 4 = remove liquidity, 5 = claim winnings, 6 = resolve
+    const action =
+      tradeType === 1
+        ? "Bought"
+        : tradeType === 2
+          ? "Sold"
+          : tradeType === 3
+            ? "Added Liquidity"
+            : tradeType === 4
+              ? "Removed Liquidity"
+              : tradeType === 5
+                ? "Claimed Winnings"
+                : tradeType === 6
+                  ? "Resolved"
+                  : "Unknown";
 
     const side = "Funded";
-    const isYes = false; // Default fallback
+    const isYes = false;
 
     return { action, side, isYes };
   };
@@ -450,7 +466,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   };
 
   const formatShares = (shares: number): string => {
-    return (shares / 1000000).toLocaleString(undefined, { minimumFractionDigits: 2 });
+    return (shares / 1000000).toLocaleString(undefined, { minimumFractionDigits: 0 });
   };
 
   const formatDate = (timestamp: string): string => {
@@ -495,10 +511,10 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       // Success toast message
       toast.success(`Successfully sold ${formatShares(sharesToSell)} shares`, {
         style: {
-          backgroundColor: "#365314",
-          color: "#a3e635",
+          backgroundColor: "#064e3b",
+          color: "#6ee7b7",
           fontWeight: "bold",
-          border: "1px solid #a3e635",
+          border: "1px solid #10b981",
         },
         duration: 6000,
       });
@@ -534,6 +550,8 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const onClaimWinningsClick = async (marketId: any, positionId: any) => {
     if (!account) return;
 
+    const claimKey = `${marketId}-${positionId}`;
+
     try {
       const response = await signAndSubmitTransaction(
         claimWinnings({
@@ -541,21 +559,23 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
           positionId,
         }),
       );
-
       await aptosClient().waitForTransaction({
         transactionHash: response.hash,
       });
-      await refetchUSDCBalance();
 
+      // Mark position as claimed
+      setClaimedPositions((prev) => new Set(prev).add(claimKey));
+
+      await refetchUSDCBalance();
       queryClient.refetchQueries();
 
       // Success toast message
       toast.success("🎉 Winnings claimed successfully!", {
         style: {
-          backgroundColor: "#365314",
-          color: "#a3e635",
+          backgroundColor: "#064e3b",
+          color: "#6ee7b7",
           fontWeight: "bold",
-          border: "1px solid #a3e635",
+          border: "1px solid #10b981",
         },
         duration: 8000,
       });
@@ -566,16 +586,12 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       if (marketDetails) {
         setMarketDetails(marketDetails as any);
       }
-
       const positions: any = await getUserPositionDetails(market.id, account.address.toString());
       setUserPositions(positions || []);
-
       console.log("Claim winnings response:", response);
       return response;
     } catch (error) {
       console.error("Error claiming winnings:", error);
-
-      // Error toast message
       toast.error("Failed to claim winnings. Please check your position and try again.", {
         style: {
           backgroundColor: "#7f1d1d",
@@ -585,7 +601,6 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         },
         duration: 6000,
       });
-
       throw error;
     }
   };
@@ -682,8 +697,6 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const isDominatingYes = market.yesPrice > market.noPrice;
   const dominatingOutcome = isDominatingYes ? "YES" : "NO";
 
-  // Transform data to show only the dominating outcome
-
   // Custom Tooltip component
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -706,7 +719,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   };
 
   const resolutionOutcome = marketDetails.resolved ? getResolutionOutcome(marketDetails.outcome) : null;
-
+  console.log("resolution", resolutionOutcome);
   const yesPrice = formatPrice(marketDetails.yesPrice);
   const noPrice = formatPrice(marketDetails.noPrice);
   const currentTime = Date.now() / 1000; // current epoch in seconds
@@ -780,14 +793,28 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   <CandlestickChart className="w-4 h-4 text-gray-400" />
                   <span>{(Number(market.totalVolume) / 1e6).toLocaleString()} USDC</span>
                 </div>
-                <span className="text-gray-500 flex gap-2 align-middle items-center">
-                  <Clock className="w-4 h-4" />{" "}
-                  {marketDetails.resolved
-                    ? `resolved ${new Date(parseInt(marketDetails.endTime) * 1000).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                      })}`
-                    : `${getTimeLeft(marketDetails.endTime)}`}
+                <span
+                  className={`flex gap-2 align-middle items-center ${
+                    marketDetails.resolved
+                      ? `px-3 py-1 rounded-full text-sm font-semibold ${
+                          resolutionOutcome === "YES"
+                            ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                            : "bg-red-500/20 text-red-400 border border-red-500/30"
+                        }`
+                      : "text-gray-500"
+                  }`}
+                >
+                  {marketDetails.resolved ? (
+                    <>
+                      <CheckCircle className="w-4 h-4" />
+                      Resolved {resolutionOutcome}
+                    </>
+                  ) : (
+                    <>
+                      <Clock className="w-4 h-4" />
+                      {getTimeLeft(marketDetails.endTime)}
+                    </>
+                  )}
                 </span>
               </div>
             </div>
@@ -949,7 +976,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         {!marketDetails.resolved && !isClosed && (
           <div className="grid grid-cols-1 mb-6 md:grid-cols-2 gap-4">
             <button
-              className="bg-[#008259] hover:bg-green-500 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
+              className="bg-[#008259] hover:bg-emerald-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
               onClick={() => {
                 setSide("YES");
                 setIsOpen(true);
@@ -1080,7 +1107,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   <span className="text-gray-400 text-sm">To win</span>
                   <div className="flex items-center gap-2">
                     <span className="text-white text-lg font-bold">
-                      ${amountUSDC ? calculatePayout(side as any, parseFloat(amountUSDC)).toFixed(1) : "0"}
+                      ${amountUSDC ? calculatePayout(side as any, parseFloat(amountUSDC)).toFixed(2) : "0"}
                     </span>
                     <span className="text-emerald-400 text-sm font-medium">
                       +
@@ -1157,7 +1184,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
             }`}
           >
             Trades
-            {userPositions.length > 0 && (
+            {marketAnalytics && (
               <span className="ml-2 bg-[#008259] text-white text-xs px-2 py-1 rounded-full">
                 {marketAnalytics?.totalTrades}
               </span>
@@ -1175,7 +1202,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   <h3 className="text-lg font-semibold text-slate-400">TVL</h3>
                 </div>
                 <div className="text-2xl font-bold text-slate-400">
-                  {formatCurrency(marketDetails.totalValueLocked)}
+                  {(parseFloat(marketDetails.totalValueLocked) / 1e6).toFixed(2)} USDC
                 </div>
               </div>
 
@@ -1184,7 +1211,9 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   <Droplets className="w-5 h-5 text-slate-400" />
                   <h3 className="text-lg font-semibold text-slate-400">Total Liquidity</h3>
                 </div>
-                <div className="text-2xl font-bold text-slate-400">{formatCurrency(marketDetails?.totalLiquidity)}</div>
+                <div className="text-2xl font-bold text-slate-400">
+                  {parseFloat(marketAnalytics?.liquidityVolume) / 1e6} USDC
+                </div>
               </div>
 
               <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-6">
@@ -1275,145 +1304,176 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   </div>
                 </div>
                 {/* Individual Positions */}
-                {userPositions.map((position, index) => {
-                  const pnl = calculatePnL(position);
-                  const sellKey = `${position.outcome}-${position.user}`;
-                  const isLoading = sellLoading[sellKey];
-                  const outcomeText = position.outcome === 1 ? "YES" : "NO";
-                  const outcomeColor = position.outcome === 1 ? "green" : "red";
-                  const currentPrice = position.outcome === 1 ? yesPrice : noPrice;
-                  console.log("current price", currentPrice);
-                  // Helper function to get resolution outcome
-                  const getResolutionOutcome = (outcome: { vec: any }) => {
-                    if (!outcome || !outcome.vec) return null;
-                    return outcome.vec === "0x01" ? 1 : 0; // 1 for YES, 0 for NO
-                  };
+                {userPositions
+                  .filter((position) => {
+                    // If market is not resolved, show all positions
+                    if (!marketDetails.resolved) {
+                      return true;
+                    }
+                    const getResolutionOutcome = (outcome: { vec: any }) => {
+                      if (!outcome || !outcome.vec) return null;
+                      return outcome.vec === "0x01" ? 1 : 0; // 1 for YES, 0 for NO
+                    };
+                    // If market is resolved, only show winning positions
+                    const marketResolution = marketDetails.resolved
+                      ? getResolutionOutcome(marketDetails.outcome)
+                      : null;
+                    const positionWon = marketDetails.resolved && position.outcome === marketResolution;
 
-                  // Check if this position won (only relevant when market is resolved)
-                  const marketResolution = marketDetails.resolved ? getResolutionOutcome(marketDetails.outcome) : null;
-                  const positionWon = marketDetails.resolved && position.outcome === marketResolution;
+                    return positionWon;
+                  })
+                  .map((position, index) => {
+                    const claimKey = `${marketDetails.id}-${position.id}`;
+                    const isClaimed = claimedPositions.has(claimKey);
 
-                  return (
-                    <div key={index} className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-6">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                              position.outcome === 1
-                                ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                                : "bg-red-500/20 text-red-400 border border-red-500/30"
-                            }`}
-                          >
-                            {outcomeText}
+                    const pnl = calculatePnL(position);
+                    const sellKey = `${position.outcome}-${position.user}`;
+                    const isLoading = sellLoading[sellKey];
+                    const outcomeText = position.outcome === 1 ? "YES" : "NO";
+                    const currentPrice = position.outcome === 1 ? yesPrice : noPrice;
+                    console.log("current price", currentPrice);
+                    // Helper function to get resolution outcome
+                    const getResolutionOutcome = (outcome: { vec: any }) => {
+                      if (!outcome || !outcome.vec) return null;
+                      return outcome.vec === "0x01" ? 1 : 0; // 1 for YES, 0 for NO
+                    };
+
+                    // Check if this position won (only relevant when market is resolved)
+                    const marketResolution = marketDetails.resolved
+                      ? getResolutionOutcome(marketDetails.outcome)
+                      : null;
+                    const positionWon = marketDetails.resolved && position.outcome === marketResolution;
+
+                    return (
+                      <div key={index} className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                                position.outcome === 1
+                                  ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                                  : "bg-red-500/20 text-red-400 border border-red-500/30"
+                              }`}
+                            >
+                              {outcomeText}
+                            </div>
+                            <div>
+                              <h4 className="text-lg font-semibold text-white">
+                                {formatShares(position.shares)} shares
+                              </h4>
+                              <p className="text-sm text-gray-400">Bought at {(position.avgPrice / 100).toFixed(1)}¢</p>
+                            </div>
+                          </div>
+
+                          {/* Conditional Action Button */}
+                          {!marketDetails.resolved && !isClosed ? (
+                            // Market is live - show sell button
+                            <button
+                              onClick={() =>
+                                onSellPositionClick(
+                                  marketDetails.id,
+                                  position.id,
+                                  position.shares,
+                                  Math.floor(currentPrice * 10000),
+                                )
+                              }
+                              disabled={isLoading}
+                              className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                                isLoading
+                                  ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                                  : "bg-[#008259] hover:bg-emerald-500/70 text-white"
+                              }`}
+                            >
+                              {isLoading ? (
+                                <>
+                                  <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                                  Selling...
+                                </>
+                              ) : (
+                                <>
+                                  <Minus className="w-4 h-4" />
+                                  Sell All
+                                </>
+                              )}
+                            </button>
+                          ) : marketDetails.resolved && positionWon ? (
+                            // Market is resolved and this position won - show claim button
+                            <button
+                              onClick={() => onClaimWinningsClick(marketDetails.id, position.id)}
+                              disabled={isLoading}
+                              className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                                isLoading
+                                  ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                                  : "bg-emerald-600 hover:bg-green-600 text-white"
+                              }`}
+                            >
+                              {isClaimed ? (
+                                <>
+                                  <Trophy className="w-4 h-4" />
+                                  Claimed
+                                </>
+                              ) : isLoading ? (
+                                <>
+                                  <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                                  Claiming...
+                                </>
+                              ) : (
+                                <>
+                                  <Trophy className="w-4 h-4" />
+                                  Claim Winnings
+                                </>
+                              )}
+                            </button>
+                          ) : marketDetails.resolved && !positionWon ? (
+                            // Market is resolved and this position lost - show status
+                            <div className="px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium">
+                              Lost Bet
+                            </div>
+                          ) : (
+                            // Market is closed but not resolved - show status
+                            <div className="px-4 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm font-medium">
+                              Market Closed
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div>
+                            <div className="text-gray-400">Current Price</div>
+                            <div className="text-white font-semibold">{(currentPrice * 100).toFixed(1)}¢</div>
                           </div>
                           <div>
-                            <h4 className="text-lg font-semibold text-white">{formatShares(position.shares)} shares</h4>
-                            <p className="text-sm text-gray-400">Bought at {(position.avgPrice / 100).toFixed(1)}¢</p>
+                            <div className="text-gray-400">Current Value</div>
+                            <div className="text-white font-semibold">
+                              ${calculatePositionValue(position).toFixed(2)}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-gray-400">P&L</div>
+                            <div className={`font-semibold ${pnl.value >= 0 ? "text-green-400" : "text-red-400"}`}>
+                              {pnl.value >= 0 ? "+" : ""}${pnl.value.toFixed(2)}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-gray-400">P&L %</div>
+                            <div className={`font-semibold ${pnl.percentage >= 0 ? "text-green-400" : "text-red-400"}`}>
+                              {pnl.percentage >= 0 ? "+" : ""}
+                              {pnl.percentage.toFixed(1)}%
+                            </div>
                           </div>
                         </div>
 
-                        {/* Conditional Action Button */}
-                        {!marketDetails.resolved && !isClosed ? (
-                          // Market is live - show sell button
-                          <button
-                            onClick={() =>
-                              onSellPositionClick(
-                                marketDetails.id,
-                                position.id,
-                                position.shares,
-                                Math.floor(currentPrice * 10000),
-                              )
-                            }
-                            disabled={isLoading}
-                            className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                              isLoading
-                                ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                                : "bg-[#008259] hover:bg-emerald-500/70 text-white"
-                            }`}
-                          >
-                            {isLoading ? (
-                              <>
-                                <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-                                Selling...
-                              </>
-                            ) : (
-                              <>
-                                <Minus className="w-4 h-4" />
-                                Sell All
-                              </>
-                            )}
-                          </button>
-                        ) : marketDetails.resolved && positionWon ? (
-                          // Market is resolved and this position won - show claim button
-                          <button
-                            onClick={() => onClaimWinningsClick(marketDetails.id, position.id)}
-                            disabled={isLoading}
-                            className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                              isLoading
-                                ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                                : "bg-green-600 hover:bg-green-500 text-white"
-                            }`}
-                          >
-                            {isLoading ? (
-                              <>
-                                <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-                                Claiming...
-                              </>
-                            ) : (
-                              <>
-                                <Trophy className="w-4 h-4" />
-                                Claim Winnings
-                              </>
-                            )}
-                          </button>
-                        ) : marketDetails.resolved && !positionWon ? (
-                          // Market is resolved and this position lost - show status
-                          <div className="px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium">
-                            Lost Bet
-                          </div>
-                        ) : (
-                          // Market is closed but not resolved - show status
-                          <div className="px-4 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm font-medium">
-                            Market Closed
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        <div>
-                          <div className="text-gray-400">Current Price</div>
-                          <div className="text-white font-semibold">{(currentPrice * 100).toFixed(1)}¢</div>
-                        </div>
-                        <div>
-                          <div className="text-gray-400">Current Value</div>
-                          <div className="text-white font-semibold">${calculatePositionValue(position).toFixed(2)}</div>
-                        </div>
-                        <div>
-                          <div className="text-gray-400">P&L</div>
-                          <div className={`font-semibold ${pnl.value >= 0 ? "text-green-400" : "text-red-400"}`}>
-                            {pnl.value >= 0 ? "+" : ""}${pnl.value.toFixed(2)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-gray-400">P&L %</div>
-                          <div className={`font-semibold ${pnl.percentage >= 0 ? "text-green-400" : "text-red-400"}`}>
-                            {pnl.percentage >= 0 ? "+" : ""}
-                            {pnl.percentage.toFixed(1)}%
+                        <div className="mt-4 pt-4 border-t border-gray-700/20">
+                          <div className="flex justify-between text-xs text-gray-500">
+                            <span>Position opened: {new Date(position.timestamp * 1000).toLocaleDateString()}</span>
+                            <span>
+                              User: {position.user.slice(0, 6)}...{position.user.slice(-4)}
+                            </span>
                           </div>
                         </div>
                       </div>
-
-                      <div className="mt-4 pt-4 border-t border-gray-700/20">
-                        <div className="flex justify-between text-xs text-gray-500">
-                          <span>Position opened: {new Date(position.timestamp * 1000).toLocaleDateString()}</span>
-                          <span>
-                            User: {position.user.slice(0, 6)}...{position.user.slice(-4)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             )}
           </div>
@@ -1435,62 +1495,102 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {latestTrades &&
                     Array.isArray(latestTrades) &&
-                    latestTrades.slice(0, 20).map((trade, index) => {
-                      const { action, side, isYes } = getTradeTypeLabel(trade.tradeType, trade.outcome);
-                      const priceChange = parseFloat(trade.yesPriceAfter) - parseFloat(trade.yesPriceBefore);
-                      const isPriceIncrease = priceChange > 0;
+                    latestTrades
+                      // .filter((trade) => {
+                      //   const { action } = getTradeTypeLabel(trade.tradeType, trade.outcome);
+                      //   // Don't show liquidity transactions
+                      //   return action !== "Added Liquidity" && action !== "Removed Liquidity";
+                      // })
+                      .slice(0, 20)
+                      .map((trade, index) => {
+                        const { action } = getTradeTypeLabel(trade.tradeType, trade.outcome);
+                        const priceChange = parseFloat(trade.yesPriceAfter) - parseFloat(trade.yesPriceBefore);
+                        const isPriceIncrease = priceChange > 0;
+                        const marketResolution = marketDetails.resolved
+                          ? getResolutionOutcome(marketDetails.outcome)
+                          : null;
 
-                      // Determine if this is a Yes or No trade from price movement
-                      const isYesTrade = parseFloat(trade.yesPriceAfter) > parseFloat(trade.yesPriceBefore);
-                      const actualSide = isYesTrade ? "Yes" : "No";
+                        // Determine if this is a Yes or No trade from price movement
+                        const isYesTrade = parseFloat(trade.yesPriceAfter) > parseFloat(trade.yesPriceBefore);
+                        const isSelling = action === "Sold";
+                        const actualSide = isSelling ? (isYesTrade ? "No" : "Yes") : isYesTrade ? "Yes" : "No";
+                        const isClaimOrResolve = action === "Claimed Winnings" || action === "Resolved";
 
-                      return (
-                        <div
-                          key={trade.tradeId || index}
-                          className="flex items-center justify-between p-4 rounded-lg bg-[#2f2f33] border border-gray-700/20"
-                        >
-                          <div className="flex items-center space-x-3">
-                            {/* Action Icon */}
-                            <div className={`p-2 rounded-full ${isYesTrade ? "bg-emerald-100/80" : "bg-rose-100/80"}`}>
-                              <User className={`w-4 h-4 ${isYesTrade ? "text-emerald-600" : "text-rose-600"}`} />
-                            </div>
-
-                            {/* Trade Details */}
-                            <div>
-                              <div className="flex items-center space-x-2">
-                                <span className="font-medium text-slate-300">{truncateAddress(trade.user)}</span>
-                                <span className="text-slate-500">{action}</span>
-                                <span
-                                  className={`font-semibold px-2 py-1 rounded text-xs ${
-                                    isYesTrade ? "bg-emerald-100/80 text-emerald-700" : "bg-rose-100/70 text-rose-700"
-                                  }`}
-                                >
-                                  {actualSide}
-                                </span>
-                              </div>
-                              <div className="text-sm text-slate-500">{formatDate(trade.timestamp)}</div>
-                            </div>
-                          </div>
-
-                          {/* Trade Value & Price Impact */}
-                          <div className="text-right">
-                            <div className="text-sm text-slate-500">
-                              {formatPrice((trade.amount / 100).toString())} USDC
-                            </div>
-                            {priceChange !== 0 && (
+                        return (
+                          <div
+                            key={trade.tradeId || index}
+                            className="flex items-center justify-between p-4 rounded-lg bg-[#2f2f33] border border-gray-700/20"
+                          >
+                            <div className="flex items-center space-x-3">
+                              {/* Action Icon */}
                               <div
-                                className={`text-xs flex items-center ${
-                                  isPriceIncrease ? "text-emerald-600" : "text-rose-600"
+                                className={`p-2 rounded-full ${
+                                  action === "Added Liquidity"
+                                    ? "bg-blue-100/80"
+                                    : action === "Claimed Winnings"
+                                      ? "bg-amber-100/80"
+                                      : isYesTrade
+                                        ? "bg-emerald-100/80"
+                                        : "bg-rose-100/80"
                                 }`}
                               >
-                                {isPriceIncrease ? "+" : ""}
-                                {(priceChange / 100).toFixed(2)}%
+                                <User
+                                  className={`w-4 h-4 ${
+                                    action === "Added Liquidity"
+                                      ? "text-teal-600"
+                                      : action === "Claimed Winnings"
+                                        ? "text-amber-600"
+                                        : isYesTrade
+                                          ? "text-emerald-600"
+                                          : "text-rose-600"
+                                  }`}
+                                />
+                              </div>
+
+                              {/* Trade Details */}
+                              <div>
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-medium text-slate-300">{truncateAddress(trade.user)}</span>
+                                  <span className="text-slate-500">{action}</span>
+                                  <span
+                                    className={`font-semibold px-2 py-1 rounded text-xs ${
+                                      action === "Added Liquidity"
+                                        ? "bg-blue-100/80 text-teal-700"
+                                        : action === "Claimed Winnings"
+                                          ? "bg-amber-100/80 text-amber-700"
+                                          : isYesTrade
+                                            ? "bg-emerald-100/80 text-emerald-700"
+                                            : "bg-rose-100/70 text-rose-700"
+                                    }`}
+                                  >
+                                    {isClaimOrResolve ? marketResolution : actualSide}
+                                  </span>
+                                </div>
+                                <div className="text-sm text-slate-500">{formatDate(trade.timestamp)}</div>
+                              </div>
+                            </div>
+
+                            {/* Trade Value & Price Impact - Hide for claim/resolve actions */}
+                            {!isClaimOrResolve && (
+                              <div className="text-right">
+                                <div className="text-sm text-slate-500">
+                                  {formatPrice((trade.amount / 100).toString())} USDC
+                                </div>
+                                {priceChange !== 0 && (
+                                  <div
+                                    className={`text-xs flex items-center ${
+                                      isPriceIncrease ? "text-emerald-600" : "text-rose-600"
+                                    }`}
+                                  >
+                                    {isPriceIncrease ? "+" : ""}
+                                    {(priceChange / 100).toFixed(2)}%
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
                 </div>
               )}
             </div>
