@@ -440,7 +440,10 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
   if (!isVisible) return null;
 
   return (
-    <div className="fixed right-4 top-20 bottom-4 w-96 bg-[#2f2f33]/95 backdrop-blur-sm border border-[#2f2f33]/20 rounded-lg z-50 flex flex-col shadow-xl">
+    <div
+      className="fixed top-16 animate-fadeInUp left-0 right-4 bottom-0 sm:right-4 sm:top-20 sm:bottom-4 sm:left-auto p-0 sm:w-96 w-full bg-[#2f2f33]/95 backdrop-blur-sm border border-[#2f2f33]/20 rounded-lg z-50 flex flex-col shadow-xl"
+      style={{ animationDelay: `5s` }}
+    >
       <div className="flex items-center justify-between p-4 border-b border-[#2f2f33]/20">
         <div className="flex items-center gap-2">
           <ScanEyeIcon className="w-5 h-5 text-[#008259]" />
@@ -697,26 +700,32 @@ export default function PivotMarketApp() {
       `}</style>
 
       {/* Header */}
-      <header className="bg-[#1a1a1e2c] animate-fadeInDown sticky top-0 z-40 overflow-hidden border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
-        <div className="max-w-7xl mx-auto py-4">
+      <header className="bg-[#1a1a1e2c] animate-fadeInDown sticky top-0 z-40 overflow-hidden border-b border-b-[var(--Stroke-Dark,#2c2c2f)] px-3 sm:px-4 lg:px-4">
+        <div className="max-w-7xl mx-auto py-3 sm:py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              <h1 className="text-2xl font-bold text-white">
-                <img src="/icons/p-lg.png" alt="Pivot Logo" className="ml-2 h-12 w-12 text-blue-400" />
+            {/* Logo Section */}
+            <div className="flex items-center gap-3 sm:gap-6">
+              <h1 className="text-xl sm:text-2xl font-bold text-white">
+                <img
+                  src="/icons/p-lg.png"
+                  alt="Pivot Logo"
+                  className="ml-1 sm:ml-2 h-10 w-10 sm:h-12 sm:w-12 text-blue-400"
+                />
               </h1>
             </div>
 
-            <div className="flex items-center gap-4">
+            {/* Right Side Actions */}
+            <div className="flex items-center gap-2 sm:gap-4">
+              {/* Insights Button */}
               <button
                 onClick={() => setShowAIAssistant(!showAIAssistant)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 bg-[#2f2f33] text-gray-300 hover:bg-gray-700"
-                `}
+                className="flex items-center justify-center px-2 sm:px-3 py-2 rounded-lg transition-all duration-300 bg-[#2f2f33] text-gray-300 hover:bg-gray-700"
               >
-                <ScanEye className="w-4 h-4" />
-                Insights
+                <ScanEye className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
 
-              <div className="flex gap-2 items-center flex-wrap">
+              {/* Wallet Selector */}
+              <div className="flex gap-1 sm:gap-2 items-center">
                 <WalletSelector />
               </div>
             </div>
@@ -733,7 +742,7 @@ export default function PivotMarketApp() {
         }}
       >
         {/* Inner content constrained to max width */}
-        <div className="max-w-7xl mx-auto px-6 py-12 rounded-2xl">
+        <div className="max-w-7xl mx-auto px-4 py-12 rounded-2xl">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-4xl font-bold text-white mb-4">Pivot Markets</h1>
@@ -744,7 +753,7 @@ export default function PivotMarketApp() {
 
               <div className="flex items-center mt-6 gap-4">
                 <button
-                  className="flex items-center gap-2 px-6 py-3 bg-[#008259] hover:bg-[#095435] text-white rounded-lg transition-colors"
+                  className="flex items-center gap-2 px-4 py-3 bg-[#008259] hover:bg-[#095435] text-white rounded-lg transition-colors"
                   onClick={() => router.push("/create")}
                 >
                   <PlusCircle className="w-5 h-5" />
@@ -755,7 +764,7 @@ export default function PivotMarketApp() {
           </div>
         </div>
       </div>
-      <div className="max-w-7xl mx-auto mb-20 px-6 ">
+      <div className="max-w-7xl mx-auto mb-20 px-4 ">
         {/* Filters Section */}
         <div className="mb-8 ">
           {/* Category Tabs */}
@@ -779,8 +788,8 @@ export default function PivotMarketApp() {
           </div>
 
           {/* Search and Filters */}
-          <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
-            <div className="flex-1 relative max-w-md">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4 w-full ">
+            <div className="flex-1 relative w-full lg:w-16 max-w-full">
               <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
@@ -791,40 +800,81 @@ export default function PivotMarketApp() {
               />
             </div>
 
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-              <div className="flex items-center gap-2 text-gray-400">
-                <span className="text-sm">Filter by</span>
-                <div className="relative">
-                  <select
-                    value={selectedStatus}
-                    onChange={(e) => setSelectedStatus(e.target.value)}
-                    className="bg-[#232328] border border-[#2f2f33] rounded-lg px-3 py-3 pr-8 text-[#c6c6c7] focus:outline-none focus:border-emerald-500/80 appearance-none cursor-pointer"
-                  >
-                    {statusFilters.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="w-4 h-4 absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none" />
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-row sm:hidden gap-3">
+                <div className="flex flex-col gap-2 flex-1">
+                  <span className="text-sm text-gray-400">Filter by</span>
+                  <div className="relative">
+                    <select
+                      value={selectedStatus}
+                      onChange={(e) => setSelectedStatus(e.target.value)}
+                      className="w-full bg-[#232328] border border-[#2f2f33] rounded-lg px-3 py-3 pr-8 text-[#c6c6c7] focus:outline-none focus:border-emerald-500/80 appearance-none cursor-pointer"
+                    >
+                      {statusFilters.map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-4 h-4 absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 flex-1">
+                  <span className="text-sm text-gray-400">Sort by</span>
+                  <div className="relative">
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      className="w-full bg-[#232328] border border-[#2f2f33] rounded-lg px-3 py-3 pr-8 text-[#c6c6c7] focus:outline-none focus:border-emerald-500/80 appearance-none cursor-pointer"
+                    >
+                      {sortOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-4 h-4 absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none" />
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-gray-400">
-                <span className="text-sm">Sort by</span>
-                <div className="relative">
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    className="bg-[#232328] border border-[#2f2f33] rounded-lg px-3 py-3 pr-8 text-[#c6c6c7] focus:outline-none focus:border-emerald-500/80 appearance-none cursor-pointer"
-                  >
-                    {sortOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="w-4 h-4 absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none" />
+              {/* Desktop: Original horizontal layout */}
+              <div className="hidden sm:flex sm:flex-row items-center gap-3">
+                <div className="flex items-center gap-2 text-gray-400">
+                  <span className="text-sm">Filter by</span>
+                  <div className="relative">
+                    <select
+                      value={selectedStatus}
+                      onChange={(e) => setSelectedStatus(e.target.value)}
+                      className="bg-[#232328] border border-[#2f2f33] rounded-lg px-3 py-3 pr-8 text-[#c6c6c7] focus:outline-none focus:border-emerald-500/80 appearance-none cursor-pointer"
+                    >
+                      {statusFilters.map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-4 h-4 absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 text-gray-400">
+                  <span className="text-sm">Sort by</span>
+                  <div className="relative">
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      className="bg-[#232328] border border-[#2f2f33] rounded-lg px-3 py-3 pr-8 text-[#c6c6c7] focus:outline-none focus:border-emerald-500/80 appearance-none cursor-pointer"
+                    >
+                      {sortOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-4 h-4 absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none" />
+                  </div>
                 </div>
               </div>
             </div>

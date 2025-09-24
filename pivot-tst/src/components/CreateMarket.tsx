@@ -180,7 +180,7 @@ const CreateMarket = () => {
 
   const getTestnetUSDC = async (account: { address: any }) => {
     try {
-  const response = await fetch("https://fullnode.testnet.aptoslabs.com/v1/view", {
+      const response = await fetch("https://fullnode.testnet.aptoslabs.com/v1/view", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -599,18 +599,18 @@ const CreateMarket = () => {
     <div className="min-h-screen bg-gradient-to-br from-[#232328] via-[#1a1a1f] to-[#0f0f14]">
       {" "}
       <header className="bg-[#1a1a1e2c] sticky top-0 z-40 overflow-hidden animate-fadeInUp border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex justify-between items-center px-4 ">
+        <div className="max-w-7xl mx-auto sm:px-1 px-3 py-4">
+          <div className="flex justify-between items-center px-0">
             {/* Logo Section */}
             <div className="cursor-pointer flex flex-col" onClick={() => router.push("/")}>
               <h1 className="text-2xl font-bold text-white">
-              <Link href="/">
-            <img
-              src="/icons/p-lg.png"
-              alt="Pivot Logo"
-              className="ml-2 h-12 w-12 cursor-pointer"
-            />
-          </Link>
+                <Link href="/">
+                <img
+                  src="/icons/p-lg.png"
+                  alt="Pivot Logo"
+                  className="ml-1 sm:ml-2 h-10 w-10 sm:h-12 sm:w-12 text-blue-400"
+                />
+                </Link>
               </h1>
             </div>
 
@@ -709,10 +709,7 @@ const CreateMarket = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.4 }}
               >
-                Greetings,{" "}
-                <span className="bg-slate-300 flex bg-clip-text text-transparent">
-                  Fren
-                </span>
+                Greetings, <span className="bg-slate-300 flex bg-clip-text text-transparent">Fren</span>
               </motion.h2>
 
               <motion.p
@@ -1162,8 +1159,6 @@ const CreateMarket = () => {
                 `}
                         required
                       />
-
-                     
                     </div>
 
                     {error && <p className="text-red-400 text-xs mt-1 flex items-center">{error}</p>}
