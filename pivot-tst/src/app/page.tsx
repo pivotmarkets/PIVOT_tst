@@ -312,6 +312,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
         }));
 
         // Combine intro message with individual news item messages
+        console.log("insights", insights)
         setMessages(insightMessages);
       } else {
         throw new Error("No trending news found in response");
