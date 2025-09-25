@@ -2,40 +2,23 @@
 
 import React, { useState, useEffect } from "react";
 import {
-  Plus,
-  MessageCircle,
-  Search,
   Clock,
   Users,
-  DollarSign,
-  Sparkles,
   Target,
   ChevronDown,
-  Diamond,
-  BarChart4Icon,
-  LucideBaggageClaim,
-  BaggageClaimIcon,
-  LucideDiamond,
   CandlestickChart,
   PlusCircle,
   SearchIcon,
   Loader,
-  Send,
   ScanEye,
   ScanEyeIcon,
 } from "lucide-react";
 import { WalletSelector } from "../components/WalletSelector";
 import { useRouter } from "next/navigation";
-import { aptosClient } from "@/utils/aptosClient";
-import {
-  getAllMarketSummaries,
-  getMarketAnalytics,
-  getUserPositions,
-  getUserPositionsWithDetails,
-} from "./view-functions/markets";
+
+import { getAllMarketSummaries, getUserPositions } from "./view-functions/markets";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import MarketDetailPage from "@/components/MarketDetails";
-import { EyeDropperIcon, PlusIcon } from "@heroicons/react/24/solid";
 import { PredictionMarketsResponse, QuickPredictionResponse } from "./serve";
 
 interface AIAssistantPanelProps {
@@ -291,7 +274,6 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
   apiBaseUrl = "http://localhost:8000",
 }) => {
   const [api] = useState(() => new PredictionMarketsAPI(apiBaseUrl));
-  const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState<
     Array<{
@@ -345,95 +327,6 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
       ]);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleSendMessage = async () => {
-    if (!input.trim() || isLoading) return;
-
-    const userMessage = {
-      type: "user" as const,
-      content: input,
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setIsLoading(true);
-
-    try {
-      // Determine the type of query and call appropriate endpoint
-      const query = input.toLowerCase();
-
-      if (query.includes("predict") || query.includes("probability") || query.includes("will")) {
-        // Quick prediction query
-        const response = await api.getQuickPrediction(input);
-
-        if (response.success) {
-          const assistantMessage = {
-            type: "assistant" as const,
-            content: `${response.answer}\n\nProbability: ${response.probability}\nConfidence: ${response.confidence}\n\nKey factors: ${response.factors.join(", ")}`,
-            data: response,
-            timestamp: new Date(),
-          };
-          setMessages((prev) => [...prev, assistantMessage]);
-        } else {
-          throw new Error(response.error || "Prediction failed");
-        }
-      } else if (query.includes("market") || query.includes("suggest") || query.includes("create")) {
-        // Market suggestion query
-        const response = await api.generatePredictionMarkets(input, 3);
-
-        if (response.success) {
-          const assistantMessage = {
-            type: "assistant" as const,
-            content: `Found ${response.count} market suggestions for: "${response.query}"`,
-            data: response.prediction_markets,
-            timestamp: new Date(),
-          };
-          setMessages((prev) => [...prev, assistantMessage]);
-        } else {
-          throw new Error(response.error || "Market generation failed");
-        }
-      } else {
-        // General news/trending query
-        const categories = [];
-        if (query.includes("crypto")) categories.push("crypto");
-        if (query.includes("tech")) categories.push("technology");
-        if (query.includes("politic")) categories.push("politics");
-        if (query.includes("sport")) categories.push("sports");
-        if (query.includes("economic")) categories.push("economics");
-
-        const response = await api.getTrendingNews(categories.length > 0 ? categories : null, 5);
-
-        if (response.success) {
-          const assistantMessage = {
-            type: "assistant" as const,
-            content: `Here are ${response.news_count} trending news items that could become prediction markets:`,
-            data: response.trending_news,
-            timestamp: new Date(),
-          };
-          setMessages((prev) => [...prev, assistantMessage]);
-        } else {
-          throw new Error(response.error || "News fetch failed");
-        }
-      }
-    } catch (error) {
-      const errorMessage = {
-        type: "assistant" as const,
-        content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
-      setInput("");
-    }
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
     }
   };
 
@@ -738,7 +631,7 @@ export default function PivotMarketApp() {
         className="w-full mb-12 bg-cover bg-center"
         style={{
           animationDelay: "0.2s",
-          backgroundImage: "url('/cover.png')", 
+          backgroundImage: "url('/cover.png')",
         }}
       >
         {/* Inner content constrained to max width */}

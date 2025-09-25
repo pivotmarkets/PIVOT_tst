@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Activity,
   BarChart3,
@@ -22,7 +22,6 @@ import {
 import { toast } from "sonner";
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
 import {
-  formatTimestamp,
   getLatestTrades,
   getMarketAnalytics,
   getMarketDetails,
@@ -31,7 +30,6 @@ import {
 } from "@/app/view-functions/markets";
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 import { WalletSelector } from "./WalletSelector";
-import { useRouter } from "next/navigation";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { buyPosition, claimWinnings, sellPosition } from "@/app/entry-functions/trade";
 import { aptosClient } from "@/utils/aptosClient";
@@ -47,13 +45,6 @@ interface Position {
   shares: number;
   avgPrice: number;
   timestamp: number;
-}
-
-interface MarketPoolBalances {
-  yesPoolBalance: number;
-  noPoolBalance: number;
-  liquidityPoolBalance: number;
-  totalValueLocked: number;
 }
 
 interface MarketDetailPageProps {
@@ -98,7 +89,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const [activeTab, setActiveTab] = useState<"overview" | "positions" | "activity">("overview");
   const USDC_ASSET_ADDRESS: string = "0x69091fbab5f7d635ee7ac5098cf0c1efbe31d68fec0f2cd565e8d168daf52832";
 
-  const [sellLoading, setSellLoading] = useState<{ [key: string]: boolean }>({});
+  const [sellLoading] = useState<{ [key: string]: boolean }>({});
   const queryClient = useQueryClient();
   const config = new AptosConfig({ network: Network.TESTNET });
   const aptos = new Aptos(config);
@@ -321,7 +312,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     }
 
     return trades
-      .map((trade, index) => {
+      .map((trade) => {
         const yesPriceAfter = parseFloat(trade.yesPriceAfter) / 100;
         const noPriceAfter = parseFloat(trade.noPriceAfter) / 100;
 
@@ -406,7 +397,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
   const { balance, refetch: refetchUSDCBalance } = useUSDCBalance();
 
-  const getTradeTypeLabel = (tradeType: number, outcome: any) => {
+  const getTradeTypeLabel = (tradeType: number) => {
     // trade_type: 1 = buy, 2 = sell, 3 = add liquidity, 4 = remove liquidity, 5 = claim winnings, 6 = resolve
     const action =
       tradeType === 1
@@ -457,11 +448,6 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   // Helper functions to format the data
   const formatPrice = (price: string): number => {
     return parseInt(price) / 10000; // Convert from basis points to decimal
-  };
-
-  const formatCurrency = (value: string): string => {
-    const numValue = parseInt(value) / 1000000;
-    return `$${numValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
   };
 
   const formatShares = (shares: number): string => {
@@ -623,22 +609,6 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     return { value: pnlValue, percentage: pnlPercentage };
   };
 
-  const transformTradeRecordsToChart = (trades: any) => {
-    return trades.map((trade: { yesPriceAfter: string; noPriceAfter: string; timestamp: string }) => {
-      const yesPrice = formatPrice(trade.yesPriceAfter);
-      const noPrice = formatPrice(trade.noPriceAfter);
-      const date = formatTimestamp(trade.timestamp);
-
-      return {
-        date: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-        time: date.toLocaleDateString("en-US", { weekday: "short", day: "numeric" }),
-        yesPrice: yesPrice,
-        noPrice: noPrice,
-        timestamp: parseInt(trade.timestamp),
-      };
-    });
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-[#232328]">
@@ -701,7 +671,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const dominatingOutcome = isDominatingYes ? "YES" : "NO";
 
   // Custom Tooltip component
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       const color = isDominatingYes ? "#10b981" : "#ef4444";
@@ -1215,72 +1185,73 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
         {/* Overview Tab */}
         {activeTab === "overview" && (
-            <div className="space-y-4 sm:space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
-                <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
-                  <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-                    <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
-                    <h3 className="text-base sm:text-lg font-semibold text-slate-400">TVL</h3>
-                  </div>
-                  <div className="text-lg sm:text-2xl font-bold text-slate-400">
-                    {(parseFloat(marketDetails.totalValueLocked) / 1e6).toFixed(2)} USDC
-                  </div>
+          <div className="space-y-4 sm:space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
+              <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
+                <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                  <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
+                  <h3 className="text-base sm:text-lg font-semibold text-slate-400">TVL</h3>
                 </div>
-
-                <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
-                  <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-                    <Droplets className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
-                    <h3 className="text-base sm:text-lg font-semibold text-slate-400">Total Liquidity</h3>
-                  </div>
-                  <div className="text-lg sm:text-2xl font-bold text-slate-400">
-                    {(parseFloat(marketAnalytics?.liquidityVolume) / 1e6).toFixed(2)} USDC
-                  </div>
-                </div>
-
-                <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
-                  <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-                    <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
-                    <h3 className="text-base sm:text-lg font-semibold text-slate-400">Created</h3>
-                  </div>
-                  <div className="text-base sm:text-lg font-bold text-slate-400">{formatDate(marketDetails.creationTime)}</div>
-                </div>
-
-                <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
-                  <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-                    <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-green-400" />
-                    <h3 className="text-base sm:text-lg font-semibold text-slate-400">YES Shares</h3>
-                  </div>
-                  <div className="text-base sm:text-lg font-bold text-green-400">
-                    {(parseInt(marketDetails.totalYesShares) / 1000000).toLocaleString()}
-                  </div>
-                </div>
-
-                <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
-                  <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-                    <TrendingDown className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
-                    <h3 className="text-base sm:text-lg font-semibold text-slate-400">NO Shares</h3>
-                  </div>
-                  <div className="text-base sm:text-lg font-bold text-red-400">
-                    {(parseInt(marketDetails.totalNoShares) / 1000000).toLocaleString()}
-                  </div>
-                </div>
-
-                <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
-                  <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-                    <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
-                    <h3 className="text-base sm:text-lg font-semibold text-slate-400">Market Ends</h3>
-                  </div>
-                  <div className="text-base sm:text-lg font-bold text-slate-400">{formatDate(marketDetails.endTime)}</div>
+                <div className="text-lg sm:text-2xl font-bold text-slate-400">
+                  {(parseFloat(marketDetails.totalValueLocked) / 1e6).toFixed(2)} USDC
                 </div>
               </div>
 
               <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
-                <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4">Resolution Criteria</h3>
-                <div className="text-sm sm:text-base font-medium text-slate-200">{marketDetails.resolutionCriteria}</div>
+                <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                  <Droplets className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
+                  <h3 className="text-base sm:text-lg font-semibold text-slate-400">Total Liquidity</h3>
+                </div>
+                <div className="text-lg sm:text-2xl font-bold text-slate-400">
+                  {(parseFloat(marketAnalytics?.liquidityVolume) / 1e6).toFixed(2)} USDC
+                </div>
+              </div>
+
+              <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
+                <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                  <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
+                  <h3 className="text-base sm:text-lg font-semibold text-slate-400">Created</h3>
+                </div>
+                <div className="text-base sm:text-lg font-bold text-slate-400">
+                  {formatDate(marketDetails.creationTime)}
+                </div>
+              </div>
+
+              <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
+                <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                  <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-green-400" />
+                  <h3 className="text-base sm:text-lg font-semibold text-slate-400">YES Shares</h3>
+                </div>
+                <div className="text-base sm:text-lg font-bold text-green-400">
+                  {(parseInt(marketDetails.totalYesShares) / 1000000).toLocaleString()}
+                </div>
+              </div>
+
+              <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
+                <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                  <TrendingDown className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
+                  <h3 className="text-base sm:text-lg font-semibold text-slate-400">NO Shares</h3>
+                </div>
+                <div className="text-base sm:text-lg font-bold text-red-400">
+                  {(parseInt(marketDetails.totalNoShares) / 1000000).toLocaleString()}
+                </div>
+              </div>
+
+              <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
+                <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                  <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
+                  <h3 className="text-base sm:text-lg font-semibold text-slate-400">Market Ends</h3>
+                </div>
+                <div className="text-base sm:text-lg font-bold text-slate-400">{formatDate(marketDetails.endTime)}</div>
               </div>
             </div>
-          )}
 
+            <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4">Resolution Criteria</h3>
+              <div className="text-sm sm:text-base font-medium text-slate-200">{marketDetails.resolutionCriteria}</div>
+            </div>
+          </div>
+        )}
 
         {/* Positions Tab */}
         {activeTab === "positions" && (
@@ -1298,7 +1269,9 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                 <div className="text-gray-400">
                   <BarChart3 className="w-12 h-12 mx-auto mb-4" />
                   <h3 className="lg:text-lg text-base font-semibold mb-2">No Positions Yet</h3>
-                  <p className="text-sm">You don't have any positions in this market. Start trading to see your positions here.</p>
+                  <p className="text-sm">
+                    You don't have any positions in this market. Start trading to see your positions here.
+                  </p>
                 </div>
               </div>
             ) : (
@@ -1513,7 +1486,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   {latestTrades &&
                     Array.isArray(latestTrades) &&
                     latestTrades.slice(0, 20).map((trade, index) => {
-                      const { action } = getTradeTypeLabel(trade.tradeType, trade.outcome);
+                      const { action } = getTradeTypeLabel(trade.tradeType);
                       const priceChange = parseFloat(trade.yesPriceAfter) - parseFloat(trade.yesPriceBefore);
                       const isPriceIncrease = priceChange > 0;
                       const marketResolution = marketDetails.resolved
@@ -1580,11 +1553,10 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                                         : action === "Claimed Winnings"
                                           ? "bg-amber-100/80 text-amber-700"
                                           : action === "Resolved"
-                                          ? "text-yellow-600"
-                                         
-                                          : isYesTrade
-                                            ? "bg-emerald-100/80 text-emerald-700"
-                                            : "bg-rose-100/70 text-rose-700"
+                                            ? "text-yellow-600"
+                                            : isYesTrade
+                                              ? "bg-emerald-100/80 text-emerald-700"
+                                              : "bg-rose-100/70 text-rose-700"
                                     }`}
                                   >
                                     {isClaimOrResolve ? marketResolution : actualSide}

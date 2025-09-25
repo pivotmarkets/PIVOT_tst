@@ -1,6 +1,6 @@
 "use client";
 
-import { notFound, redirect, useRouter } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import MarketDetails from "@/components/MarketDetails";
 import { getMarketSummary } from "@/app/view-functions/markets";
 

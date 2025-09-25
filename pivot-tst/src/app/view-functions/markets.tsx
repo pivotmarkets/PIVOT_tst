@@ -1,4 +1,4 @@
-import { MODULE_ADDRESS, COIN_TYPE } from "@/constants";
+import { MODULE_ADDRESS } from "@/constants";
 import { aptosClient } from "@/utils/aptosClient";
 
 // TradeRecord structure for price history and trade history
@@ -309,7 +309,6 @@ export const getMarketDetails = async (marketId: number): Promise<MarketDetails 
  * Get all market IDs that exist
  */
 export const getAllMarketIds = async (
-  coinType: string = "0x69091fbab5f7d635ee7ac5098cf0c1efbe31d68fec0f2cd565e8d168daf52832::usdc::USDC",
 ): Promise<string[]> => {
   try {
     const response = await aptosClient().view<[string[]]>({
