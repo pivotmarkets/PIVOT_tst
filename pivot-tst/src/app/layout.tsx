@@ -10,16 +10,16 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   applicationName: "Pivot Markets",
-  title: "Pivot Markets",
+  title: "Pivot Markets | Home",
   description: "Aptos Boilerplate Template",
   manifest: "/manifest.json",
   icons: {
     icon: [
-      { url: "/icons/logo.png", type: "image/svg+xml" },
-      { url: "/icons/logo.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/logo.png", sizes: "512x512", type: "image/png" },
+      { url: "/icons/pivot-200.png", type: "image/svg+xml" },
+      { url: "/icons/pivot-200", sizes: "192x192", type: "image/png" },
+      { url: "/icons/pivot-200.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: { url: "/icons/Pivot.svg", sizes: "192x192", type: "image/png" },
+    apple: { url: "/icons/pivot-200.png", sizes: "192x192", type: "image/png" },
   },
 };
 

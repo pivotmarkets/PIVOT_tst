@@ -738,7 +738,7 @@ export default function PivotMarketApp() {
         className="w-full mb-12 bg-cover bg-center"
         style={{
           animationDelay: "0.2s",
-          backgroundImage: "url('/cover.png')", // image in public root
+          backgroundImage: "url('/cover.png')", 
         }}
       >
         {/* Inner content constrained to max width */}
