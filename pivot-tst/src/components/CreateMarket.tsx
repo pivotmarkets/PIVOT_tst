@@ -91,7 +91,7 @@ const CreateMarket = () => {
       // Get trending news from specific categories
       const newsResponse = await predictionAPI.getTrendingNews(["crypto", "politics", "technology"], 8);
 
-      console.log("Trending news retrieved:", newsResponse);
+      console.log("Trending news retrieved:", newsResponse, progress, currentStep);
 
       // Process news items and create markets from them
       const marketPromises = newsResponse.trending_news
@@ -178,25 +178,6 @@ const CreateMarket = () => {
     return { balance, loading, refetch: fetchBalance };
   };
 
-  const getTestnetUSDC = async (account: { address: any }) => {
-    try {
-      const response = await fetch("https://fullnode.testnet.aptoslabs.com/v1/view", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          function: "0x1::primary_fungible_store::ensure_primary_store_exists",
-          type_arguments: [],
-          arguments: [account.address, USDC_ASSET_ADDRESS],
-        }),
-      });
-
-      console.log("Ensure store exists response:", await response.text());
-    } catch (error) {
-      console.error("Error ensuring store exists:", error);
-    }
-  };
 
   const { balance } = useUSDCBalance();
 
@@ -213,16 +194,7 @@ const CreateMarket = () => {
     }
   };
 
-  const handleMaxClick = () => {
-    const maxAmount = Math.max(balance, 2);
-    setInitialLiquidity(maxAmount);
-    setError("");
-  };
 
-  const formatBalance = (bal: number) => {
-    if (loading) return "Loading...";
-    return `Bal:${bal.toFixed(2)} USDC`;
-  };
 
   const handleSelectSuggestion = async (index: number) => {
     // Create a temporary session ID if one doesn't exist
@@ -402,24 +374,7 @@ const CreateMarket = () => {
       ]);
     }
   };
-  const handleCreateMarket = async () => {
-    if (!selectedSuggestion && !marketProposal) return;
 
-    setLoading(true);
-
-    try {
-    } catch (err) {
-      console.error("Create market error:", err);
-      setMessages((prev) => [...prev, { role: "ai", content: "⚠️ Failed to create market. Please try again." }]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEditMarket = () => {
-    setEditingMarket(true);
-    setShowSuggestions(false);
-  };
 
   const handleSend = async () => {
     if (!input.trim()) return;
