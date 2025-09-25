@@ -1,6 +1,5 @@
 // Internal components
 import { Button } from "@/components/ui/button";
-import { UserCircleIcon, UserIcon } from "@heroicons/react/24/solid";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
@@ -28,19 +27,13 @@ import {
 import {
   ArrowLeft,
   ArrowRight,
-  Bot,
   CheckCircle2,
   ChevronDown,
   Circle,
   Copy,
   LogOut,
-  LucideUserCircle,
-  LucideUserCircle2,
-  Sparkles,
   User,
-  UserCircle2,
   Wallet,
-  Zap,
 } from "lucide-react";
 import { useCallback, useState } from "react";
 
