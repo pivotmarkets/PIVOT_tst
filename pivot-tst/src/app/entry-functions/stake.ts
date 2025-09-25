@@ -15,7 +15,7 @@ export type CreateMarketArguments = {
  * Create a new market in the pivot_market_sum contract
  */
 export const createMarket = (args: CreateMarketArguments): InputTransactionData => {
-  const { title, description, resolution_criteria, endTime, oracle, initialLiquidity, coinType } = args;
+  const { title, description, resolution_criteria, endTime, oracle, initialLiquidity } = args;
 
   return {
     data: {

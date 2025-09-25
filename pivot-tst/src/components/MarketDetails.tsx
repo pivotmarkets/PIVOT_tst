@@ -1289,8 +1289,8 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
               <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-8 text-center">
                 <div className="text-gray-400 mb-4">
                   <Wallet className="w-12 h-12 mx-auto mb-4" />
-                  <h3 className="lg:text-lg text-sm font-semibold mb-2">Connect Your Wallet</h3>
-                  <p>Connect your wallet to view your positions in this market.</p>
+                  <h3 className="lg:text-lg text-base font-semibold mb-2">Connect Your Wallet</h3>
+                  <p className="text-sm">Connect your wallet to view your positions in this market.</p>
                 </div>
               </div>
             ) : userPositions.length === 0 ? (
