@@ -12,14 +12,14 @@ export type CreateMarketArguments = {
 };
 
 /**
- * Create a new market in the pivot_markets contract
+ * Create a new market in the y contract
  */
 export const createMarket = (args: CreateMarketArguments): InputTransactionData => {
   const { title, description, resolution_criteria, endTime, oracle, initialLiquidity } = args;
 
   return {
     data: {
-      function: `${MODULE_ADDRESS}::pivot_markets::create_market`,
+      function: `${MODULE_ADDRESS}::y::create_market`,
       functionArguments: [title, description, resolution_criteria, endTime, oracle, initialLiquidity],
     },
   };

@@ -10,7 +10,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   applicationName: "Pivot Markets",
-  title: "Pivot Markets | Home",
+  title: "Pivot Markets",
   description: "Aptos Boilerplate Template",
   manifest: "/manifest.json",
   icons: {

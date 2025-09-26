@@ -229,7 +229,7 @@ const CreateMarket = () => {
     const resolution_criteria =
       marketProposal.resolution_criteria ||
       "This market will be resolved based on official sources and verifiable information at the specified end time.";
-    const oracle = "0x48723c2e1aaba547c911d76d4b6775cd445a7b41bb8ca3eede52d44c6ae856c0";
+    const oracle = "0xb4403ce8b8163332307f98d70f26e9b0be59f51f8e6d6ea414f79944930ad81b";
 
     // Parse the date string "DD/MM/YYYY HH:mm"
     const endTime = marketProposal.end_date;

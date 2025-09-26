@@ -1,5 +1,4 @@
-module pivot_markets::y
- {
+module pivot_markets::y {
     use aptos_framework::fungible_asset::{Self, Metadata, FungibleStore};
     use aptos_framework::dispatchable_fungible_asset;
     use aptos_framework::object::{Self, Object, ExtendRef};
@@ -47,6 +46,7 @@ module pivot_markets::y
     const TRADE_TYPE_REMOVE_LIQUIDITY: u8 = 4;
     const TRADE_TYPE_CLAIM_WINNINGS: u8 = 5;
     const TRADE_TYPE_RESOLVE: u8 = 6;
+    const TRADE_TYPE_CLAIM_LIQUIDITY: u8 = 7;
 
     // Trade record for order book and analytics
     struct TradeRecord has store, copy, drop {
@@ -63,6 +63,7 @@ module pivot_markets::y
         no_price_after: u64, // NO price after trade
         timestamp: u64,
         gas_used: Option<u64>, // Future extension for gas tracking
+        fee: u64,
     }
 
     // OHLC data structure
@@ -88,6 +89,7 @@ module pivot_markets::y
         hourly_volume: Table<u64, u64>, // hour_timestamp -> volume
         price_history: vector<TradeRecord>, // Store recent price points for charting
         max_price_history: u64, // Maximum number of price points to store
+        total_fees: u64,
     }
 
     // Position represents a user's stake in a particular outcome
@@ -135,6 +137,8 @@ module pivot_markets::y
         trade_history: Table<u64, TradeRecord>,
         next_trade_id: u64,
         analytics: MarketAnalytics,
+        lp_claim_pool: Option<Object<FungibleStore>>,
+        lp_claim_extend_ref: Option<ExtendRef>,
     }
 
     struct MarketStore has key {
@@ -146,6 +150,8 @@ module pivot_markets::y
         market_creation_fee: u64,
         min_initial_liquidity: u64,
         min_market_duration: u64,
+        trade_fee_rate: u64,
+        creator_fee_rate: u64,
     }
 
     // Helper function to get day timestamp (midnight UTC)
@@ -167,7 +173,8 @@ module pivot_markets::y
         amount: u64,
         shares: Option<u64>,
         yes_price_before: u64,
-        no_price_before: u64
+        no_price_before: u64,
+        fee: u64
     ) {
         let timestamp = timestamp::now_seconds();
         let day_ts = get_day_timestamp(timestamp);
@@ -219,6 +226,7 @@ module pivot_markets::y
             no_price_after,
             timestamp,
             gas_used: option::none(),
+            fee,
         };
 
         // Store trade record
@@ -229,6 +237,7 @@ module pivot_markets::y
         let analytics = &mut market.analytics;
         analytics.total_volume = analytics.total_volume + amount;
         analytics.total_trades = analytics.total_trades + 1;
+        analytics.total_fees = analytics.total_fees + fee;
 
         // Update volume by outcome type
         if (option::is_some(&outcome)) {
@@ -293,6 +302,8 @@ module pivot_markets::y
             market_creation_fee: 10000,
             min_initial_liquidity: 100000,
             min_market_duration: 3600,
+            trade_fee_rate: 100, // 1%
+            creator_fee_rate: 2000, // 20%
         });
     }
 
@@ -400,6 +411,7 @@ module pivot_markets::y
             hourly_volume: table::new(),
             price_history: vector::empty(),
             max_price_history: 1000, // Store last 1000 trades for charting
+            total_fees: 0,
         };
         
         let market = Market {
@@ -428,6 +440,8 @@ module pivot_markets::y
             trade_history: table::new(),
             next_trade_id: 0,
             analytics,
+            lp_claim_pool: option::none(),
+            lp_claim_extend_ref: option::none(),
         };
 
         table::add(&mut store.markets, id, market);
@@ -442,7 +456,8 @@ module pivot_markets::y
             initial_liquidity,
             option::none(),
             PRICE_PRECISION / 2, // Initial prices are 50/50
-            PRICE_PRECISION / 2
+            PRICE_PRECISION / 2,
+            0
         );
     }
 
@@ -469,23 +484,25 @@ module pivot_markets::y
 
         let fa = primary_fungible_store::withdraw(provider, market.asset_metadata, amount);
         
-        let half = amount / 2;
-        let yes_liquidity = fungible_asset::extract(&mut fa, half);
+        let total_reserve_before = market.amm_pool.yes_reserve + market.amm_pool.no_reserve;
+        let yes_add = (amount * market.amm_pool.yes_reserve) / total_reserve_before;
+        let no_add = amount - yes_add;
+        
+        let yes_liquidity = fungible_asset::extract(&mut fa, yes_add);
         let no_liquidity = fa;
         
         dispatchable_fungible_asset::deposit(market.yes_pool, yes_liquidity);
         dispatchable_fungible_asset::deposit(market.no_pool, no_liquidity);
         
         let amm_pool = &mut market.amm_pool;
-        amm_pool.yes_reserve = amm_pool.yes_reserve + half;
-        amm_pool.no_reserve = amm_pool.no_reserve + half;
-        amm_pool.virtual_yes = amm_pool.virtual_yes + half;
-        amm_pool.virtual_no = amm_pool.virtual_no + half;
+        amm_pool.yes_reserve = amm_pool.yes_reserve + yes_add;
+        amm_pool.no_reserve = amm_pool.no_reserve + no_add;
+        amm_pool.virtual_yes = amm_pool.virtual_yes + yes_add;
+        amm_pool.virtual_no = amm_pool.virtual_no + no_add;
         
         let lp_tokens_to_mint = if (amm_pool.total_lp_tokens == 0) {
             amount
         } else {
-            let total_reserve_before = (amm_pool.yes_reserve - half) + (amm_pool.no_reserve - half);
             (amount * amm_pool.total_lp_tokens) / total_reserve_before
         };
         
@@ -505,7 +522,8 @@ module pivot_markets::y
             amount,
             option::none(),
             yes_price_before,
-            no_price_before
+            no_price_before,
+            0
         );
     }
 
@@ -531,6 +549,9 @@ module pivot_markets::y
         let yes_price_before = calculate_outcome_price(market.amm_pool.yes_reserve, market.amm_pool.no_reserve, 1);
         let no_price_before = calculate_outcome_price(market.amm_pool.yes_reserve, market.amm_pool.no_reserve, 2);
 
+        let fee = (amount * store.trade_fee_rate) / PRICE_PRECISION;
+        let amount_after_fee = amount - fee;
+
         let amm_pool = &market.amm_pool;
         let (effective_shares, outcome_reserve) = if (outcome == 1) {
             (market.total_yes_shares + amm_pool.virtual_yes, amm_pool.yes_reserve)
@@ -538,9 +559,9 @@ module pivot_markets::y
             (market.total_no_shares + amm_pool.virtual_no, amm_pool.no_reserve)
         };
         let shares = if (outcome_reserve == 0) {
-            amount
+            amount_after_fee
         } else {
-            (amount * effective_shares) / outcome_reserve
+            (amount_after_fee * effective_shares) / outcome_reserve
         };
         assert!(shares > 0, error::invalid_argument(E_ZERO_SHARES));
         
@@ -614,102 +635,107 @@ module pivot_markets::y
             amount,
             option::some(shares),
             yes_price_before,
-            no_price_before
+            no_price_before,
+            fee
         );
     }
 
     // Sell position using AMM pricing
-public entry fun sell_position(
-    user: &signer,
-    market_id: u64,
-    position_id: u64,
-    shares_to_sell: u64,
-    min_price: u64
-) acquires MarketStore {
-    let store = borrow_global_mut<MarketStore>(@pivot_markets);
-    assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
-    let market = table::borrow_mut(&mut store.markets, market_id);
+    public entry fun sell_position(
+        user: &signer,
+        market_id: u64,
+        position_id: u64,
+        shares_to_sell: u64,
+        min_price: u64
+    ) acquires MarketStore {
+        let store = borrow_global_mut<MarketStore>(@pivot_markets);
+        assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
+        let market = table::borrow_mut(&mut store.markets, market_id);
 
-    assert!(!market.resolved, error::invalid_state(E_MARKET_RESOLVED));
-    assert!(table::contains(&market.positions, position_id), error::not_found(E_POSITION_NOT_FOUND));
+        assert!(!market.resolved, error::invalid_state(E_MARKET_RESOLVED));
+        assert!(table::contains(&market.positions, position_id), error::not_found(E_POSITION_NOT_FOUND));
 
-    let position = table::borrow_mut(&mut market.positions, position_id);
-    let user_addr = signer::address_of(user);
-    assert!(position.user == user_addr, error::permission_denied(E_NOT_ADMIN));
-    assert!(position.shares >= shares_to_sell, error::invalid_argument(E_INSUFFICIENT_LIQUIDITY));
+        let position = table::borrow_mut(&mut market.positions, position_id);
+        let user_addr = signer::address_of(user);
+        assert!(position.user == user_addr, error::permission_denied(E_NOT_ADMIN));
+        assert!(position.shares >= shares_to_sell, error::invalid_argument(E_INSUFFICIENT_LIQUIDITY));
 
-    // Record prices before trade
-    let yes_price_before = calculate_outcome_price(market.amm_pool.yes_reserve, market.amm_pool.no_reserve, 1);
-    let no_price_before = calculate_outcome_price(market.amm_pool.yes_reserve, market.amm_pool.no_reserve, 2);
+        // Record prices before trade
+        let yes_price_before = calculate_outcome_price(market.amm_pool.yes_reserve, market.amm_pool.no_reserve, 1);
+        let no_price_before = calculate_outcome_price(market.amm_pool.yes_reserve, market.amm_pool.no_reserve, 2);
 
-    let amm_pool = &mut market.amm_pool;
-    let (total_shares, virtual_s, outcome_reserve) = if (position.outcome == 1) {
-        (market.total_yes_shares, amm_pool.virtual_yes, amm_pool.yes_reserve)
-    } else {
-        (market.total_no_shares, amm_pool.virtual_no, amm_pool.no_reserve)
-    };
-    
-    let denom = total_shares + virtual_s;
-    let payout_amount = if (denom == 0) {
-        0
-    } else {
-        (shares_to_sell * outcome_reserve) / denom
-    };
-    
-    let effective_price = if (shares_to_sell > 0) {
-        (payout_amount * PRICE_PRECISION) / shares_to_sell
-    } else {
-        0
-    };
-    assert!(effective_price >= min_price, error::invalid_argument(E_INVALID_PRICE));
-    
-    let pool_balance = if (position.outcome == 1) {
-        fungible_asset::balance(market.yes_pool)
-    } else {
-        fungible_asset::balance(market.no_pool)
-    };
-    assert!(pool_balance >= payout_amount, error::invalid_state(E_INSUFFICIENT_POOL_BALANCE));
-
-    position.shares = position.shares - shares_to_sell;
-
-    // Store outcome before potential removal
-    let outcome = position.outcome;
-
-    if (position.outcome == 1) {
-        market.total_yes_shares = market.total_yes_shares - shares_to_sell;
-        market.amm_pool.yes_reserve = market.amm_pool.yes_reserve - payout_amount;
-        let pool_signer = object::generate_signer_for_extending(&market.yes_pool_extend_ref);
-        let payout_fa = dispatchable_fungible_asset::withdraw(&pool_signer, market.yes_pool, payout_amount);
-        dispatchable_fungible_asset::deposit(primary_fungible_store::primary_store(user_addr, market.asset_metadata), payout_fa);
-    } else {
-        market.total_no_shares = market.total_no_shares - shares_to_sell;
-        market.amm_pool.no_reserve = market.amm_pool.no_reserve - payout_amount;
-        let pool_signer = object::generate_signer_for_extending(&market.no_pool_extend_ref);
-        let payout_fa = dispatchable_fungible_asset::withdraw(&pool_signer, market.no_pool, payout_amount);
-        dispatchable_fungible_asset::deposit(primary_fungible_store::primary_store(user_addr, market.asset_metadata), payout_fa);
-    };
-
-    if (position.shares == 0) {
-        table::remove(&mut market.positions, position_id);
-        let user_position_ids = table::borrow_mut(&mut market.user_positions, user_addr);
-        let (found, index) = vector::index_of(user_position_ids, &position_id);
-        if (found) {
-            vector::remove(user_position_ids, index);
+        let amm_pool = &mut market.amm_pool;
+        let (total_shares, virtual_s, outcome_reserve) = if (position.outcome == 1) {
+            (market.total_yes_shares, amm_pool.virtual_yes, amm_pool.yes_reserve)
+        } else {
+            (market.total_no_shares, amm_pool.virtual_no, amm_pool.no_reserve)
         };
-    };
+        
+        let denom = total_shares + virtual_s;
+        let payout_amount = if (denom == 0) {
+            0
+        } else {
+            (shares_to_sell * outcome_reserve) / denom
+        };
+        
+        let fee = (payout_amount * store.trade_fee_rate) / PRICE_PRECISION;
+        let payout_to_user = payout_amount - fee;
+        
+        let effective_price = if (shares_to_sell > 0) {
+            (payout_to_user * PRICE_PRECISION) / shares_to_sell
+        } else {
+            0
+        };
+        assert!(effective_price >= min_price, error::invalid_argument(E_INVALID_PRICE));
+        
+        let pool_balance = if (position.outcome == 1) {
+            fungible_asset::balance(market.yes_pool)
+        } else {
+            fungible_asset::balance(market.no_pool)
+        };
+        assert!(pool_balance >= payout_to_user, error::invalid_state(E_INSUFFICIENT_POOL_BALANCE));
 
-    // Record the trade using stored outcome
-    record_trade(
-        market,
-        user_addr,
-        TRADE_TYPE_SELL,
-        option::some(outcome), // Use stored outcome instead of position.outcome
-        payout_amount,
-        option::some(shares_to_sell),
-        yes_price_before,
-        no_price_before
-    );
-}
+        position.shares = position.shares - shares_to_sell;
+
+        // Store outcome before potential removal
+        let outcome = position.outcome;
+
+        if (position.outcome == 1) {
+            market.total_yes_shares = market.total_yes_shares - shares_to_sell;
+            market.amm_pool.yes_reserve = market.amm_pool.yes_reserve - payout_to_user;
+            let pool_signer = object::generate_signer_for_extending(&market.yes_pool_extend_ref);
+            let payout_fa = dispatchable_fungible_asset::withdraw(&pool_signer, market.yes_pool, payout_to_user);
+            dispatchable_fungible_asset::deposit(primary_fungible_store::primary_store(user_addr, market.asset_metadata), payout_fa);
+        } else {
+            market.total_no_shares = market.total_no_shares - shares_to_sell;
+            market.amm_pool.no_reserve = market.amm_pool.no_reserve - payout_to_user;
+            let pool_signer = object::generate_signer_for_extending(&market.no_pool_extend_ref);
+            let payout_fa = dispatchable_fungible_asset::withdraw(&pool_signer, market.no_pool, payout_to_user);
+            dispatchable_fungible_asset::deposit(primary_fungible_store::primary_store(user_addr, market.asset_metadata), payout_fa);
+        };
+
+        if (position.shares == 0) {
+            table::remove(&mut market.positions, position_id);
+            let user_position_ids = table::borrow_mut(&mut market.user_positions, user_addr);
+            let (found, index) = vector::index_of(user_position_ids, &position_id);
+            if (found) {
+                vector::remove(user_position_ids, index);
+            };
+        };
+
+        // Record the trade using stored outcome
+        record_trade(
+            market,
+            user_addr,
+            TRADE_TYPE_SELL,
+            option::some(outcome),
+            payout_to_user,
+            option::some(shares_to_sell),
+            yes_price_before,
+            no_price_before,
+            fee
+        );
+    }
 
     // Resolve a market
     public entry fun resolve_market(
@@ -739,17 +765,38 @@ public entry fun sell_position(
 
         let total_pool_value = fungible_asset::balance(market.yes_pool) + fungible_asset::balance(market.no_pool);
         let platform_fee_amount = (total_pool_value * store.platform_fee_rate) / 10000;
+        let creator_fee_amount = (market.analytics.total_fees * store.creator_fee_rate) / PRICE_PRECISION;
+        let lp_return = market.amm_pool.total_lp_tokens;
+
+        let losing_pool = if (outcome == 1) market.no_pool else market.yes_pool;
+        let losing_pool_extend_ref = if (outcome == 1) &market.no_pool_extend_ref else &market.yes_pool_extend_ref;
+        let losing_pool_balance = fungible_asset::balance(losing_pool);
+
+        // Assume sufficient balance in losing pool
+        assert!(losing_pool_balance >= platform_fee_amount + creator_fee_amount + lp_return, error::invalid_state(E_INSUFFICIENT_POOL_BALANCE));
+
+        let pool_signer = object::generate_signer_for_extending(losing_pool_extend_ref);
 
         if (platform_fee_amount > 0) {
-            let losing_pool = if (outcome == 1) market.no_pool else market.yes_pool;
-            let losing_pool_extend_ref = if (outcome == 1) &market.no_pool_extend_ref else &market.yes_pool_extend_ref;
-            let losing_pool_balance = fungible_asset::balance(losing_pool);
-            
-            if (losing_pool_balance >= platform_fee_amount) {
-                let pool_signer = object::generate_signer_for_extending(losing_pool_extend_ref);
-                let platform_fee = dispatchable_fungible_asset::withdraw(&pool_signer, losing_pool, platform_fee_amount);
-                dispatchable_fungible_asset::deposit(primary_fungible_store::primary_store(store.admin, market.asset_metadata), platform_fee);
-            };
+            let platform_fee = dispatchable_fungible_asset::withdraw(&pool_signer, losing_pool, platform_fee_amount);
+            dispatchable_fungible_asset::deposit(primary_fungible_store::primary_store(store.admin, market.asset_metadata), platform_fee);
+        };
+
+        if (creator_fee_amount > 0) {
+            let creator_fee = dispatchable_fungible_asset::withdraw(&pool_signer, losing_pool, creator_fee_amount);
+            dispatchable_fungible_asset::deposit(primary_fungible_store::primary_store(market.creator, market.asset_metadata), creator_fee);
+        };
+
+        // Create LP claim pool
+        let constructor_ref = object::create_object(@pivot_markets);
+        let lp_claim_store = fungible_asset::create_store(&constructor_ref, market.asset_metadata);
+        let lp_claim_extend_ref = object::generate_extend_ref(&constructor_ref);
+        market.lp_claim_pool = option::some(lp_claim_store);
+        market.lp_claim_extend_ref = option::some(lp_claim_extend_ref);
+
+        if (lp_return > 0) {
+            let lp_return_fa = dispatchable_fungible_asset::withdraw(&pool_signer, losing_pool, lp_return);
+            dispatchable_fungible_asset::deposit(lp_claim_store, lp_return_fa);
         };
 
         market.outcome = option::some(outcome);
@@ -764,7 +811,8 @@ public entry fun sell_position(
             platform_fee_amount,
             option::none(),
             yes_price_before,
-            no_price_before
+            no_price_before,
+            0
         );
     }
 
@@ -786,7 +834,7 @@ public entry fun sell_position(
         assert!(position.user == user_addr, error::permission_denied(E_NOT_ADMIN));
 
         let outcome = *option::borrow(&market.outcome);
-        let payout_amount = 0;
+        let payout_amount: u64 = 0;
 
         // Record prices before claim (final prices)
         let yes_price_before = if (outcome == 1) PRICE_PRECISION else 0;
@@ -843,7 +891,53 @@ public entry fun sell_position(
             payout_amount,
             option::some(position.shares),
             yes_price_before,
-            no_price_before
+            no_price_before,
+            0
+        );
+    }
+
+    // Claim LP principal after resolution
+    public entry fun claim_lp_principal(
+        provider: &signer,
+        market_id: u64
+    ) acquires MarketStore {
+        let store = borrow_global_mut<MarketStore>(@pivot_markets);
+        assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
+        let market = table::borrow_mut(&mut store.markets, market_id);
+
+        assert!(market.resolved, error::invalid_state(E_MARKET_NOT_RESOLVED));
+
+        let provider_addr = signer::address_of(provider);
+        let amm_pool = &mut market.amm_pool;
+
+        assert!(table::contains(&amm_pool.lp_providers, provider_addr), error::not_found(E_POSITION_NOT_FOUND));
+
+        let nominal = table::remove(&mut amm_pool.lp_providers, provider_addr);
+        amm_pool.total_lp_tokens = amm_pool.total_lp_tokens - nominal;
+
+        assert!(option::is_some(&market.lp_claim_pool), error::invalid_state(E_MARKET_NOT_RESOLVED));
+
+        let lp_claim_pool = *option::borrow(&market.lp_claim_pool);
+        let lp_claim_extend_ref = option::borrow(&market.lp_claim_extend_ref);
+        let pool_signer = object::generate_signer_for_extending(lp_claim_extend_ref);
+        let fa = dispatchable_fungible_asset::withdraw(&pool_signer, lp_claim_pool, nominal);
+        dispatchable_fungible_asset::deposit(primary_fungible_store::primary_store(provider_addr, market.asset_metadata), fa);
+
+        let outcome_val = *option::borrow(&market.outcome);
+        let yes_price_before = if (outcome_val == 1) PRICE_PRECISION else 0;
+        let no_price_before = if (outcome_val == 2) PRICE_PRECISION else 0;
+
+        // Record the claim
+        record_trade(
+            market,
+            provider_addr,
+            TRADE_TYPE_CLAIM_LIQUIDITY,
+            option::none(),
+            nominal,
+            option::none(),
+            yes_price_before,
+            no_price_before,
+            0
         );
     }
 
@@ -916,7 +1010,8 @@ public entry fun sell_position(
             total_amount,
             option::none(),
             yes_price_before,
-            no_price_before
+            no_price_before,
+            0
         );
     }
 
@@ -985,6 +1080,9 @@ public entry fun sell_position(
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
+        let fee_rate = store.trade_fee_rate;
+        let amount_after_fee = if (is_buy) { amount_in * (PRICE_PRECISION - fee_rate) / PRICE_PRECISION } else { amount_in };
+
         let amm_pool = &market.amm_pool;
         let current_price = calculate_outcome_price(
             amm_pool.yes_reserve,
@@ -999,9 +1097,9 @@ public entry fun sell_position(
                 (market.total_no_shares + amm_pool.virtual_no, amm_pool.no_reserve)
             };
             let shares = if (outcome_reserve == 0) {
-                amount_in
+                amount_after_fee
             } else {
-                (amount_in * effective_shares) / outcome_reserve
+                (amount_after_fee * effective_shares) / outcome_reserve
             };
 
             let new_yes_reserve = if (outcome == 1) {
@@ -1033,23 +1131,25 @@ public entry fun sell_position(
             let amount_out = if (denom == 0) {
                 0
             } else {
-                (amount_in * outcome_reserve) / denom
+                (amount_after_fee * outcome_reserve) / denom
             };
 
+            let amount_out_after_fee = amount_out * (PRICE_PRECISION - fee_rate) / PRICE_PRECISION;
+
             let effective_price = if (amount_in > 0) {
-                (amount_out * PRICE_PRECISION) / amount_in
+                (amount_out_after_fee * PRICE_PRECISION) / amount_in
             } else {
                 0
             };
 
-            (amount_out, effective_price, 0)
+            (amount_out_after_fee, effective_price, 0)
         }
     }
 
     // NEW ANALYTICS AND TRADE HISTORY VIEW FUNCTIONS
 
     #[view]
-    public fun get_market_analytics(market_id: u64): (u64, u64, u64, u64, u64, u64) acquires MarketStore {
+    public fun get_market_analytics(market_id: u64): (u64, u64, u64, u64, u64, u64, u64) acquires MarketStore {
         let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
@@ -1061,7 +1161,8 @@ public entry fun sell_position(
             analytics.yes_volume,
             analytics.no_volume,
             analytics.liquidity_volume,
-            analytics.unique_trader_count
+            analytics.unique_trader_count,
+            analytics.total_fees
         )
     }
 

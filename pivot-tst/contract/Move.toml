@@ -4,7 +4,7 @@ version = "1.8.1"
 authors = []
 
 [addresses]
-pivot_markets = "0x48723c2e1aaba547c911d76d4b6775cd445a7b41bb8ca3eede52d44c6ae856c0"
+pivot_markets = "0xb4403ce8b8163332307f98d70f26e9b0be59f51f8e6d6ea414f79944930ad81b"
 
 [dependencies]
 AptosFramework = { git = "https://github.com/aptos-labs/aptos-framework.git", rev = "mainnet", subdir = "aptos-framework" }
