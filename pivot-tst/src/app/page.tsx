@@ -16,7 +16,7 @@ import {
 import { WalletSelector } from "../components/WalletSelector";
 import { useRouter } from "next/navigation";
 
-import { getAllMarketSummaries, getUserPositions } from "./view-functions/markets";
+import { getAllMarketSummaries } from "./view-functions/markets";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import MarketDetailPage from "@/components/MarketDetails";
 import { PredictionMarketsResponse, QuickPredictionResponse } from "./serve";
@@ -164,7 +164,30 @@ const ArcMeter = ({ percentage, size = 80 }: any) => {
   const radius = size / 2 - 4;
   const circumference = Math.PI * radius;
   const strokeDasharray = circumference;
-  const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+  // Shared animated state
+  const [animatedValue, setAnimatedValue] = useState(0);
+
+  useEffect(() => {
+    let start: number | null = null;
+    const duration = 1000; // ms
+
+    const animate = (timestamp: number) => {
+      if (!start) start = timestamp;
+      const progress = Math.min((timestamp - start) / duration, 1);
+      const current = progress * percentage;
+      setAnimatedValue(current);
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+
+    requestAnimationFrame(animate);
+  }, [percentage]);
+
+  const strokeDashoffset =
+    circumference - (animatedValue / 100) * circumference;
 
   return (
     <div className="relative" style={{ width: size, height: size / 2 + 4 }}>
@@ -186,18 +209,22 @@ const ArcMeter = ({ percentage, size = 80 }: any) => {
           strokeLinecap="round"
           strokeDasharray={strokeDasharray}
           strokeDashoffset={strokeDashoffset}
-          className="transition-all duration-500"
         />
       </svg>
       {/* Percentage text */}
       <div className="absolute inset-0 flex items-end justify-center pb-1">
-        <span className={`text-sm font-bold ${percentage >= 50 ? "text-green-400" : "text-red-400"}`}>
-          {percentage.toFixed(1)}%
+        <span
+          className={`text-sm font-bold ${
+            percentage >= 50 ? "text-green-400" : "text-red-400"
+          }`}
+        >
+          {animatedValue.toFixed(1)}%
         </span>
       </div>
     </div>
   );
 };
+
 
 const MarketCard = ({ market }: any) => {
   const yesPercentage = market.yesPrice * 100;
@@ -466,9 +493,6 @@ export default function PivotMarketApp() {
     const fetchMarkets = async () => {
       try {
         const marketData = await getAllMarketSummaries();
-        const userPositions = await getUserPositions(0, account?.address.toString() as any);
-        console.log("markets--", marketData);
-        console.log("userPositions--", userPositions, account?.address.toString());
         setMarkets(marketData);
       } catch (error) {
         console.error("Failed to fetch markets:", error);
@@ -811,7 +835,7 @@ export default function PivotMarketApp() {
             };
 
             return (
-              <div key={rawMarket.id} className="animate-fadeInUp" style={{ animationDelay: `${0.6 + index * 0.1}s` }}>
+              <div key={rawMarket.id} className="">
                 <MarketCard market={transformedMarket} onPredict={handlePredictMarket} />
               </div>
             );
@@ -861,7 +885,7 @@ export default function PivotMarketApp() {
         )}
 
         {/* Empty State */}
-        {account && filteredMarkets.length === 0 && (
+        {account && markets && markets.length === 0 && (
           <div className="text-center py-12 animate-fadeInUp">
             <Target className="w-16 h-16 text-gray-600 mx-auto mb-4" />
             <h3 className="text-xl font-medium text-white mb-2">No markets found</h3>

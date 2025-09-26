@@ -11,7 +11,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createMarket } from "@/app/entry-functions/stake";
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 import { WalletSelector } from "./WalletSelector";
-import { PredictionMarketsAPI } from "../app/serve";
 import Link from "next/link";
 
 interface Message {
@@ -46,7 +45,6 @@ const CreateMarket = () => {
   const [initialLiquidity, setInitialLiquidity] = useState<number>(2);
   const [error, setError] = useState("");
   const [creatingCustomMarket, setCreatingCustomMarket] = useState(false);
-  const [suggestedQuestions, setSuggestedQuestions] = useState<any>(null);
   const [marketCreated, setMarketCreated] = useState(false);
   const [createdMarketTitle, setCreatedMarketTitle] = useState("");
 
@@ -63,6 +61,12 @@ const CreateMarket = () => {
   const USDC_DECIMALS = 6; // USDC has 6 decimals
 
   const userId = "steel"; // You can make this dynamic
+
+  const [suggestedQuestions] = useState([
+    "Will Bitcoin reach $150,000 by end of 2025?",
+    "Will OpenAI release GPT-5 in 2025?",
+    "Will SpaceX successfully land humans on Mars by 2030?",
+  ]);
 
   const handleSuggestedReply = () => {
     if (suggestedReply) {
@@ -83,57 +87,6 @@ const CreateMarket = () => {
 
   const config = new AptosConfig({ network: Network.TESTNET });
   const aptos = new Aptos(config);
-
-  const predictionAPI = new PredictionMarketsAPI("http://localhost:8000");
-
-  async function getTrendingNewsForMarkets() {
-    try {
-      // Get trending news from specific categories
-      const newsResponse = await predictionAPI.getTrendingNews(["crypto", "politics", "technology"], 8);
-
-      console.log("Trending news retrieved:", newsResponse, progress, currentStep);
-
-      // Process news items and create markets from them
-      const marketPromises = newsResponse.trending_news
-        .filter((news) => news.market_potential > 0.6) // Only high-potential news
-        .slice(0, 3) // Limit to top 3
-        .map(async (news) => {
-          // Use the first suggested question as a market query
-          const query = news.suggested_market_questions[0];
-          return await predictionAPI.generatePredictionMarkets(query, 2);
-        });
-
-      const allMarkets = await Promise.all(marketPromises);
-      console.log("Markets generated from news:", allMarkets);
-
-      return { news: newsResponse, markets: allMarkets };
-    } catch (error) {
-      console.error("Failed to get trending news:", error);
-      throw error;
-    }
-  }
-
-  useEffect(() => {
-    const fetchSuggested = async () => {
-      try {
-        const result = await getTrendingNewsForMarkets();
-
-        // Extract questions from the trending news
-        const allQuestions = result.news.trending_news
-          .filter((newsItem: any) => newsItem.market_potential > 0.6)
-          .flatMap((newsItem: any) => newsItem.suggested_market_questions)
-          .slice(0, 3); // Limit to 3 questions
-
-        setSuggestedQuestions(allQuestions);
-      } catch (err: any) {
-        console.error("Error fetching suggested markets:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchSuggested();
-  }, []);
 
   const useUSDCBalance = () => {
     const { account } = useWallet();
@@ -178,7 +131,6 @@ const CreateMarket = () => {
     return { balance, loading, refetch: fetchBalance };
   };
 
-
   const { balance } = useUSDCBalance();
 
   const handleLiquidityChange = (e: { target: { value: any } }) => {
@@ -193,8 +145,6 @@ const CreateMarket = () => {
       setError("");
     }
   };
-
-
 
   const handleSelectSuggestion = async (index: number) => {
     // Create a temporary session ID if one doesn't exist
@@ -374,7 +324,6 @@ const CreateMarket = () => {
       ]);
     }
   };
-
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -560,11 +509,11 @@ const CreateMarket = () => {
             <div className="cursor-pointer flex flex-col" onClick={() => router.push("/")}>
               <h1 className="text-2xl font-bold text-white">
                 <Link href="/">
-                <img
-                  src="/icons/p-lg.png"
-                  alt="Pivot Logo"
-                  className="ml-1 sm:ml-2 h-10 w-10 sm:h-12 sm:w-12 text-blue-400"
-                />
+                  <img
+                    src="/icons/p-lg.png"
+                    alt="Pivot Logo"
+                    className="ml-1 sm:ml-2 h-10 w-10 sm:h-12 sm:w-12 text-blue-400"
+                  />
                 </Link>
               </h1>
             </div>
@@ -645,7 +594,7 @@ const CreateMarket = () => {
                 ].map(({ icon: Icon, onClick }, idx) => (
                   <motion.div
                     key={idx}
-                    className={`w-12 h-12 rounded-2xl bg-slate-800/80 flex items-center justify-center shadow-lg shadow-black/40 ${onClick ? "cursor-pointer hover:shadow-lime-500/20" : ""}`}
+                    className={`w-12 h-12 rounded-2xl bg-slate-800/80 flex mt-12 items-center justify-center shadow-sm shadow-black/40 ${onClick ? "cursor-pointer hover:shadow-lime-500/20" : ""}`}
                     initial={{ opacity: 0, rotate: -90 }}
                     animate={{ opacity: 1, rotate: 0 }}
                     transition={{ duration: 0.5, delay: 0.3 + idx * 0.1 }}
@@ -659,16 +608,19 @@ const CreateMarket = () => {
               </motion.div>
 
               <motion.h2
-                className="text-4xl font-bold bg-slate-300 flex bg-clip-text text-transparent"
+                className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold 
+             bg-slate-300 flex bg-clip-text text-transparent text-center"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.4 }}
               >
-                Greetings, <span className="bg-slate-300 flex bg-clip-text text-transparent">Fren</span>
+                Greetings, Fren 👋
               </motion.h2>
 
               <motion.p
-                className="text-lg text-gray-300 mt-4 max-w-lg mx-auto flex items-center justify-center gap-2"
+                className="text-sm sm:text-base md:text-lg text-gray-300 mt-4 
+             max-w-md sm:max-w-lg mx-auto flex flex-wrap items-center 
+             justify-center gap-2 text-center"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.5 }}
@@ -676,11 +628,9 @@ const CreateMarket = () => {
                 Want to create a bet?
                 <span
                   onClick={() => {
-                    // Hide suggestions and clear input
                     setShowSuggestions(false);
                     setInput("");
 
-                    // Create an empty market proposal template
                     const emptyMarketProposal = {
                       title: "",
                       question: "",
@@ -696,17 +646,13 @@ const CreateMarket = () => {
                       sources: [],
                     };
 
-                    // Set the empty proposal and enable editing mode
                     setMarketProposal(emptyMarketProposal);
                     setSelectedSuggestion(null);
                     setEditingMarket(true);
                     setCreatingCustomMarket(true);
-
-                    // Update progress
                     setCurrentStep(2);
                     setProgress("Creating Custom Market");
 
-                    // Add AI message
                     setMessages((prev) => [
                       ...prev,
                       {
@@ -716,7 +662,8 @@ const CreateMarket = () => {
                       },
                     ]);
                   }}
-                  className="text-[#02834e] hover:text-green-800 cursor-pointer font-medium transition-all duration-200 flex items-center gap-1"
+                  className="text-[#02834e] hover:text-green-800 cursor-pointer font-medium 
+               transition-all duration-200 flex items-center gap-1"
                 >
                   <Edit3 className="w-4 h-4" />
                   Create Manually
@@ -745,7 +692,9 @@ const CreateMarket = () => {
                   <motion.button
                     key={idx}
                     onClick={() => handleSuggestedQuestion(question)}
-                    className="group relative flex-shrink-0 w-64 lg:w-auto flex-1 p-6 bg-[#2a2a30]/90 backdrop-blur-sm rounded-2xl text-left hover:bg-[#323238]/80 transition-all duration-300 overflow-clip"
+                    className="group relative flex-shrink-0 w-64 lg:w-auto lg:flex-1 p-6 
+                 bg-[#2a2a30]/90 backdrop-blur-sm rounded-2xl text-left 
+                 hover:bg-[#323238]/80 transition-all duration-300 overflow-clip"
                     initial={{ opacity: 0, x: 50 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.5, delay: 0.7 + idx * 0.1 }}
@@ -753,13 +702,15 @@ const CreateMarket = () => {
                   >
                     {/* Background gradient on hover */}
                     <motion.div
-                      className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                      className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 
+                   opacity-0 group-hover:opacity-100 transition-opacity duration-300"
                       initial={false}
                     />
 
                     <div className="relative flex items-start gap-3">
                       <motion.p
-                        className="text-gray-300 group-hover:text-white transition-colors leading-relaxed text-sm break-words"
+                        className="text-gray-300 group-hover:text-white transition-colors 
+                     leading-relaxed text-sm break-words"
                         initial={{ opacity: 0.8 }}
                         whileHover={{ opacity: 1 }}
                       >
@@ -1265,10 +1216,10 @@ const CreateMarket = () => {
                   onKeyPress={handleKeyPress}
                   placeholder={
                     showSuggestions
-                      ? "Search for more suggestions..."
+                      ? "Search suggestions..."
                       : editingMarket
-                        ? "Make changes to the market proposal..."
-                        : "What's the prediction you'd like people to bet on?"
+                        ? "Edit market proposal..."
+                        : "Ask a question..."
                   }
                   className="w-full resize-none border-none outline-none bg-transparent text-gray-100 placeholder-gray-400 pt-3 px-2 text-base leading-relaxed"
                   style={{ minHeight: "40px" }}

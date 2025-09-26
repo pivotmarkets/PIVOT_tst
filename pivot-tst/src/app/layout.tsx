@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 import { ReactQueryProvider } from "@/components/ReactQueryProvider";
 import { WalletProvider } from "@/components/WalletProvider";
-import { Toaster } from 'sonner';
+import { Toaster } from "sonner";
 import { WrongNetworkAlert } from "@/components/WrongNetworkAlert";
 
 import "./globals.css";
@@ -23,14 +23,10 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-           <Toaster />
+      <Toaster />
       <body className="bg-[#1a1a1e57] text-white min-h-screen flex flex-col">
         <WalletProvider>
           <ReactQueryProvider>
@@ -38,23 +34,35 @@ export default function RootLayout({
             <div className="flex-1">
               <div id="root">{children}</div>
             </div>
-            
+
             <footer className="bg-[#2f2f33] pt-6 border-t border-t-[var(--Stroke-Dark,#2c2c2f)]">
-              <div className="max-w-7xl mx-auto px-6 py-8">
-                <div className="flex items-center justify-center mb-4">
-                  <img src="./icons/logo-foot.png" alt="Footer Logo" className="h-14 w-auto" />
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+                <div className="flex items-center justify-center mb-6">
+                  <img src="./icons/footer-logo2.png" alt="Footer Logo" className="h-12 sm:h-14 w-auto" />
                 </div>
-                <div className="flex items-center justify-center gap-4 text-sm text-gray-400">
-                  <span>© 2025 Pivot Markets</span>
-            
-                  <span>•</span>
-                  <span>Privacy Policy</span>
-                  <span>•</span>
-                  <span>Terms of Service</span>
+
+                {/* Mobile-first approach with responsive layout */}
+                <div className="text-center">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-center gap-2 sm:gap-4 text-sm text-gray-400">
+                    <span className="whitespace-nowrap">© 2025 Pivot Markets</span>
+
+                    {/* Hide separators on mobile, show on desktop */}
+                    <span className="hidden sm:inline">•</span>
+
+                    <div className="flex flex-row items-center justify-center sm:gap-4 gap-2">
+                      <span className="whitespace-nowrap hover:text-gray-300 cursor-pointer transition-colors">
+                        Privacy Policy
+                      </span>
+                      <span className="">•</span>
+                      <span className="whitespace-nowrap hover:text-gray-300 cursor-pointer transition-colors">
+                        How it works
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </footer>
-            
+
             <WrongNetworkAlert />
             <Toaster />
           </ReactQueryProvider>
