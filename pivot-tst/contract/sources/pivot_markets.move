@@ -1,4 +1,4 @@
-module pivot_market_sum::y
+module pivot_markets::y
  {
     use aptos_framework::fungible_asset::{Self, Metadata, FungibleStore};
     use aptos_framework::dispatchable_fungible_asset;
@@ -279,7 +279,7 @@ module pivot_market_sum::y
         asset_metadata: Object<Metadata>
     ) {
         let admin_addr = signer::address_of(admin);
-        assert!(admin_addr == @pivot_market_sum, error::permission_denied(E_NOT_ADMIN));
+        assert!(admin_addr == @pivot_markets, error::permission_denied(E_NOT_ADMIN));
         assert!(!exists<MarketStore>(admin_addr), error::already_exists(E_ALREADY_INITIALIZED));
 
         primary_fungible_store::ensure_primary_store_exists(admin_addr, asset_metadata);
@@ -342,7 +342,7 @@ module pivot_market_sum::y
         initial_liquidity: u64
     ) acquires MarketStore {
         let creator_addr = signer::address_of(creator);
-        let store = borrow_global_mut<MarketStore>(@pivot_market_sum);
+        let store = borrow_global_mut<MarketStore>(@pivot_markets);
         
         let current_time = timestamp::now_seconds();
         assert!(end_time > current_time + store.min_market_duration, error::invalid_argument(E_INVALID_END_TIME));
@@ -454,7 +454,7 @@ module pivot_market_sum::y
     ) acquires MarketStore {
         assert!(amount > 0, error::invalid_argument(E_INVALID_BET_AMOUNT));
 
-        let store = borrow_global_mut<MarketStore>(@pivot_market_sum);
+        let store = borrow_global_mut<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow_mut(&mut store.markets, market_id);
 
@@ -519,7 +519,7 @@ module pivot_market_sum::y
     ) acquires MarketStore {
         assert!(amount > 0, error::invalid_argument(E_INVALID_BET_AMOUNT));
 
-        let store = borrow_global_mut<MarketStore>(@pivot_market_sum);
+        let store = borrow_global_mut<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow_mut(&mut store.markets, market_id);
 
@@ -626,7 +626,7 @@ public entry fun sell_position(
     shares_to_sell: u64,
     min_price: u64
 ) acquires MarketStore {
-    let store = borrow_global_mut<MarketStore>(@pivot_market_sum);
+    let store = borrow_global_mut<MarketStore>(@pivot_markets);
     assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
     let market = table::borrow_mut(&mut store.markets, market_id);
 
@@ -717,7 +717,7 @@ public entry fun sell_position(
         market_id: u64,
         outcome: u8
     ) acquires MarketStore {
-        let store = borrow_global_mut<MarketStore>(@pivot_market_sum);
+        let store = borrow_global_mut<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow_mut(&mut store.markets, market_id);
 
@@ -774,7 +774,7 @@ public entry fun sell_position(
         market_id: u64,
         position_id: u64
     ) acquires MarketStore {
-        let store = borrow_global_mut<MarketStore>(@pivot_market_sum);
+        let store = borrow_global_mut<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow_mut(&mut store.markets, market_id);
 
@@ -853,7 +853,7 @@ public entry fun sell_position(
         market_id: u64,
         lp_tokens_to_burn: u64
     ) acquires MarketStore {
-        let store = borrow_global_mut<MarketStore>(@pivot_market_sum);
+        let store = borrow_global_mut<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow_mut(&mut store.markets, market_id);
 
@@ -926,7 +926,7 @@ public entry fun sell_position(
         u64, String, String, String, u64, u64, u64, u64, bool, Option<u8>, 
         address, address, u64, u64, u64, u64, u64, u64, u64
     ) acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -945,7 +945,7 @@ public entry fun sell_position(
 
     #[view]
     public fun get_market_pool_state(market_id: u64): (u64, u64, u64, u64, u64) acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -963,7 +963,7 @@ public entry fun sell_position(
 
     #[view]
     public fun get_user_lp_balance(market_id: u64, user: address): u64 acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -981,7 +981,7 @@ public entry fun sell_position(
         amount_in: u64,
         is_buy: bool
     ): (u64, u64, u64) acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -1050,7 +1050,7 @@ public entry fun sell_position(
 
     #[view]
     public fun get_market_analytics(market_id: u64): (u64, u64, u64, u64, u64, u64) acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
         let analytics = &market.analytics;
@@ -1067,7 +1067,7 @@ public entry fun sell_position(
 
     #[view]
     public fun get_trade_history(market_id: u64, offset: u64, limit: u64): vector<TradeRecord> acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -1094,7 +1094,7 @@ public entry fun sell_position(
 
     #[view]
     public fun get_price_history(market_id: u64): vector<TradeRecord> acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -1103,7 +1103,7 @@ public entry fun sell_position(
 
     #[view]
     public fun get_daily_volume(market_id: u64, day_timestamp: u64): u64 acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -1117,7 +1117,7 @@ public entry fun sell_position(
 
     #[view]
     public fun get_hourly_volume(market_id: u64, hour_timestamp: u64): u64 acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -1131,7 +1131,7 @@ public entry fun sell_position(
 
     #[view]
     public fun get_trade_by_id(market_id: u64, trade_id: u64): TradeRecord acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
         assert!(table::contains(&market.trade_history, trade_id), error::not_found(E_POSITION_NOT_FOUND));
@@ -1141,7 +1141,7 @@ public entry fun sell_position(
 
     #[view]
     public fun get_user_trade_history(market_id: u64, user: address, limit: u64): vector<TradeRecord> acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -1174,7 +1174,7 @@ public entry fun sell_position(
         start_time: u64, 
         end_time: u64
     ): (u64, u64) acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -1204,7 +1204,7 @@ public entry fun sell_position(
         periods: u64
     ): vector<OHLCData> acquires MarketStore {
         // Returns vector of OHLCData structs
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -1309,7 +1309,7 @@ public entry fun sell_position(
 
     #[view]
     public fun get_all_market_ids(): vector<u64> acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         let market_ids = vector::empty<u64>();
         let market_id = 0;
         
@@ -1325,7 +1325,7 @@ public entry fun sell_position(
 
     #[view]
     public fun get_markets_paginated(offset: u64, limit: u64): vector<u64> acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         let market_ids = vector::empty<u64>();
         let market_id = 0;
         let count = 0;
@@ -1349,7 +1349,7 @@ public entry fun sell_position(
     public fun get_market_summary(market_id: u64): (
         u64, String, String, u64, bool, u64, u64, u64, u64, u64
     ) acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -1374,13 +1374,13 @@ public entry fun sell_position(
 
     #[view]
     public fun get_market_count(): u64 acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         store.next_id
     }
 
     #[view]
     public fun get_user_positions(market_id: u64, user: address): vector<u64> acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -1393,7 +1393,7 @@ public entry fun sell_position(
 
     #[view]
     public fun get_position(market_id: u64, position_id: u64): (address, u8, u64, u64, u64) acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
         assert!(table::contains(&market.positions, position_id), error::not_found(E_POSITION_NOT_FOUND));
@@ -1404,7 +1404,7 @@ public entry fun sell_position(
 
     #[view]
     public fun get_platform_stats(): (u64, u64, u64) acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         let total_markets = 0;
         let total_tvl = 0;
         let active_markets = 0;
@@ -1438,7 +1438,7 @@ public entry fun sell_position(
         min_market_duration: u64
     ) acquires MarketStore {
         let admin_addr = signer::address_of(admin);
-        let store = borrow_global_mut<MarketStore>(@pivot_market_sum);
+        let store = borrow_global_mut<MarketStore>(@pivot_markets);
         assert!(admin_addr == store.admin, error::permission_denied(E_NOT_ADMIN));
 
         store.platform_fee_rate = platform_fee_rate;
@@ -1449,7 +1449,7 @@ public entry fun sell_position(
 
     #[view]
     public fun get_platform_params(): (u64, u64, u64, u64) acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         (
             store.platform_fee_rate,
             store.market_creation_fee,
@@ -1460,7 +1460,7 @@ public entry fun sell_position(
 
     #[view]
     public fun get_asset_metadata(): Object<Metadata> acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         store.asset_metadata
     }
 
@@ -1468,7 +1468,7 @@ public entry fun sell_position(
 
     #[view]
     public fun get_market_depth(market_id: u64, outcome: u8): (u64, u64, u64, u64) acquires MarketStore {
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -1491,7 +1491,7 @@ public entry fun sell_position(
     #[view]
     public fun get_latest_trades(market_id: u64, limit: u64): vector<TradeRecord> acquires MarketStore {
         // Get most recent trades for real-time feed
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -1517,7 +1517,7 @@ public entry fun sell_position(
     #[view]
     public fun get_price_at_timestamp(market_id: u64, outcome: u8, target_timestamp: u64): u64 acquires MarketStore {
         // Get the price of an outcome at a specific timestamp (useful for historical analysis)
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -1550,7 +1550,7 @@ public entry fun sell_position(
         time_period: u64
     ): u64 acquires MarketStore {
         // Calculate VWAP for a specific outcome over a time period
-        let store = borrow_global<MarketStore>(@pivot_market_sum);
+        let store = borrow_global<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow(&store.markets, market_id);
 
@@ -1593,7 +1593,7 @@ public entry fun sell_position(
         new_max: u64
     ) acquires MarketStore {
         let admin_addr = signer::address_of(admin);
-        let store = borrow_global_mut<MarketStore>(@pivot_market_sum);
+        let store = borrow_global_mut<MarketStore>(@pivot_markets);
         assert!(admin_addr == store.admin, error::permission_denied(E_NOT_ADMIN));
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         

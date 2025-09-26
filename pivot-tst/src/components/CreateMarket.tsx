@@ -229,7 +229,7 @@ const CreateMarket = () => {
     const resolution_criteria =
       marketProposal.resolution_criteria ||
       "This market will be resolved based on official sources and verifiable information at the specified end time.";
-    const oracle = "0x4ec842f9be21e687b8ab1eaa770d6ae80b7456f2b31a5c0221b7310095b84396";
+    const oracle = "0x48723c2e1aaba547c911d76d4b6775cd445a7b41bb8ca3eede52d44c6ae856c0";
 
     // Parse the date string "DD/MM/YYYY HH:mm"
     const endTime = marketProposal.end_date;
@@ -261,7 +261,16 @@ const CreateMarket = () => {
       ]);
       return;
     }
-    console.log("creating market with--", title, description, resolution_criteria, formattedEndTime, initialLiquidity, currentStep, progress);
+    console.log(
+      "creating market with--",
+      title,
+      description,
+      resolution_criteria,
+      formattedEndTime,
+      initialLiquidity,
+      currentStep,
+      progress,
+    );
     try {
       const response = await signAndSubmitTransaction(
         createMarket({

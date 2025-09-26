@@ -102,7 +102,7 @@ export const getUserPositions = async (marketId: number, userAddress: string): P
   try {
     const response = await aptosClient().view<string[][]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_user_positions`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_user_positions`,
         functionArguments: [marketId.toString(), userAddress],
       },
     });
@@ -126,7 +126,7 @@ export const getUserPositionDetails = async (marketId: number, userAddress: stri
       positionIds.map((positionId) =>
         aptosClient().view<[string, string, string, string, string]>({
           payload: {
-            function: `${MODULE_ADDRESS}::pivot_market_sum::get_position`,
+            function: `${MODULE_ADDRESS}::pivot_markets::get_position`,
             functionArguments: [marketId.toString(), positionId.toString()],
           },
         }),
@@ -165,7 +165,7 @@ export const getMarketTotalValueLocked = async (marketId: number): Promise<numbe
 
     const response = await aptosClient().view<string[]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_market_total_value_locked`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_market_total_value_locked`,
         functionArguments: [marketId.toString()],
       },
     });
@@ -182,7 +182,7 @@ export const getMarketPoolBalances = async (marketId: number): Promise<MarketPoo
   try {
     const response = await aptosClient().view<string[]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_market_pool_balances`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_market_pool_balances`,
         functionArguments: [marketId.toString()],
       },
     });
@@ -205,7 +205,7 @@ export const getAllMarketsWithTvl = async (): Promise<{ marketIds: number[]; tvl
   try {
     const response = await aptosClient().view<[string[], string[]]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_all_markets_with_tvl`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_all_markets_with_tvl`,
         functionArguments: [],
       },
     });
@@ -226,7 +226,7 @@ export const getPlatformStats = async (): Promise<PlatformStats> => {
   try {
     const response = await aptosClient().view<string[]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_platform_stats`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_platform_stats`,
         functionArguments: [],
       },
     });
@@ -273,7 +273,7 @@ export const getMarketDetails = async (marketId: number): Promise<MarketDetails 
       ]
     >({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_market_details`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_market_details`,
         functionArguments: [marketId.toString()],
       },
     });
@@ -308,12 +308,11 @@ export const getMarketDetails = async (marketId: number): Promise<MarketDetails 
 /**
  * Get all market IDs that exist
  */
-export const getAllMarketIds = async (
-): Promise<string[]> => {
+export const getAllMarketIds = async (): Promise<string[]> => {
   try {
     const response = await aptosClient().view<[string[]]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_all_market_ids`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_all_market_ids`,
         functionArguments: [],
       },
     });
@@ -336,7 +335,7 @@ export const getMarketsPaginated = async (
   try {
     const response = await aptosClient().view<[string[]]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_markets_paginated`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_markets_paginated`,
         typeArguments: [coinType],
         functionArguments: [offset.toString(), limit.toString()],
       },
@@ -369,7 +368,7 @@ export const getMarketSummary = async (marketId: number): Promise<MarketSummary 
       ]
     >({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_market_summary`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_market_summary`,
         functionArguments: [marketId.toString()],
       },
     });
@@ -461,7 +460,7 @@ export const getPositionDetails = async (
       ]
     >({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_user_positions`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_user_positions`,
         typeArguments: [coinType],
         functionArguments: [marketId.toString(), positionId.toString()],
       },
@@ -493,7 +492,7 @@ export const getMarketCreationParams = async (
   try {
     const response = await aptosClient().view<[string, string, string]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_market_creation_params`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_market_creation_params`,
         typeArguments: [coinType],
         functionArguments: [],
       },
@@ -517,7 +516,7 @@ export const getMarketCount = async (coinType: string = "0x1::aptos_coin::AptosC
   try {
     const response = await aptosClient().view<[string]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_market_count`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_market_count`,
         typeArguments: [coinType],
         functionArguments: [],
       },
@@ -562,7 +561,7 @@ export const getMarketAnalytics = async (marketId: number): Promise<MarketAnalyt
   try {
     const response = await aptosClient().view<string[]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_market_analytics`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_market_analytics`,
         functionArguments: [marketId.toString()],
       },
     });
@@ -592,7 +591,7 @@ export const getDailyVolume = async (marketId: number, dayTimestamp: number): Pr
   try {
     const response = await aptosClient().view<[string]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_daily_volume`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_daily_volume`,
         functionArguments: [marketId.toString(), dayTimestamp.toString()],
       },
     });
@@ -614,7 +613,7 @@ export const getHourlyVolume = async (marketId: number, hourTimestamp: number): 
   try {
     const response = await aptosClient().view<[string]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_hourly_volume`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_hourly_volume`,
         functionArguments: [marketId.toString(), hourTimestamp.toString()],
       },
     });
@@ -641,7 +640,7 @@ export const getVolumeByTimeRange = async (
   try {
     const response = await aptosClient().view<string[]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_volume_by_time_range`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_volume_by_time_range`,
         functionArguments: [marketId.toString(), startTime.toString(), endTime.toString()],
       },
     });
@@ -664,33 +663,33 @@ export const getLatestTrades = async (marketId: number, limit: number): Promise<
   try {
     const response = await aptosClient().view<any>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_latest_trades`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_latest_trades`,
         functionArguments: [marketId.toString(), limit.toString()],
       },
     });
-    
+
     console.log("Raw response from get_latest_trades:", response);
 
     // Handle the nested array structure - extract the first (and likely only) inner array
     const tradesArray = Array.isArray(response) && response.length > 0 ? response[0] : [];
-    
+
     if (!Array.isArray(tradesArray)) {
       console.error("Expected trades array, got:", tradesArray);
       return [];
     }
 
     return tradesArray.map((trade: any) => ({
-      tradeId: trade.trade_id || generateTradeId(), 
-      user: trade.user || 'unknown',
-      tradeType: trade.trade_type ? Number(trade.trade_type) : 1, 
+      tradeId: trade.trade_id || generateTradeId(),
+      user: trade.user || "unknown",
+      tradeType: trade.trade_type ? Number(trade.trade_type) : 1,
       outcome: trade.outcome ? Number(trade.outcome) : null,
-      amount: trade.amount || '0',
+      amount: trade.amount || "0",
       shares: trade.shares || null,
-      price: trade.price || '0',
-      yesPriceBefore: trade.yes_price_before || '0',
-      noPriceBefore: trade.no_price_before || '0',
-      yesPriceAfter: trade.yes_price_after || '0',
-      noPriceAfter: trade.no_price_after || '0',
+      price: trade.price || "0",
+      yesPriceBefore: trade.yes_price_before || "0",
+      noPriceBefore: trade.no_price_before || "0",
+      yesPriceAfter: trade.yes_price_after || "0",
+      noPriceAfter: trade.no_price_after || "0",
       timestamp: trade.timestamp || Math.floor(Date.now() / 1000).toString(),
       gasUsed: trade.gas_used || null,
     }));
@@ -719,7 +718,7 @@ export const getUserTradeHistory = async (
   try {
     const response = await aptosClient().view<TradeRecord[]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_user_trade_history`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_user_trade_history`,
         functionArguments: [marketId.toString(), userAddress, limit.toString()],
       },
     });
@@ -756,7 +755,7 @@ export const getPriceAtTimestamp = async (marketId: number, outcome: number, tim
   try {
     const response = await aptosClient().view<[string]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_price_at_timestamp`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_price_at_timestamp`,
         functionArguments: [marketId.toString(), outcome.toString(), timestamp.toString()],
       },
     });
@@ -783,7 +782,7 @@ export const getVolumeWeightedAveragePrice = async (
   try {
     const response = await aptosClient().view<[string]>({
       payload: {
-        function: `${MODULE_ADDRESS}::pivot_market_sum::get_volume_weighted_average_price`,
+        function: `${MODULE_ADDRESS}::pivot_markets::get_volume_weighted_average_price`,
         functionArguments: [marketId.toString(), outcome.toString(), timePeriod.toString()],
       },
     });

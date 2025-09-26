@@ -28,7 +28,7 @@ export const buyPosition = (args: BuyPositionArguments): InputTransactionData =>
 
   return {
     data: {
-      function: `${MODULE_ADDRESS}::pivot_market_sum::buy_position`,
+      function: `${MODULE_ADDRESS}::pivot_markets::buy_position`,
       functionArguments: [marketId, outcome, amount, maxSlippage],
     },
   };
@@ -42,7 +42,7 @@ export const sellPosition = (args: SellPositionArguments): InputTransactionData 
 
   return {
     data: {
-      function: `${MODULE_ADDRESS}::pivot_market_sum::sell_position`,
+      function: `${MODULE_ADDRESS}::pivot_markets::sell_position`,
       functionArguments: [marketId, positionId, sharesToSell, minPrice],
     },
   };
@@ -56,7 +56,7 @@ export const claimWinnings = (args: ClaimWinningsArguments): InputTransactionDat
 
   return {
     data: {
-      function: `${MODULE_ADDRESS}::pivot_market_sum::claim_winnings`,
+      function: `${MODULE_ADDRESS}::pivot_markets::claim_winnings`,
       functionArguments: [marketId, positionId],
     },
   };
