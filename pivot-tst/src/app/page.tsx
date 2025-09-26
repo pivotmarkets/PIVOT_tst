@@ -801,7 +801,7 @@ export default function PivotMarketApp() {
 
         {/* Markets Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredMarkets.map((rawMarket: any, index) => {
+          {filteredMarkets.map((rawMarket: any) => {
             const currentTime = Date.now() / 1000; // current epoch time
             const endTime = parseInt(rawMarket.endTime);
 

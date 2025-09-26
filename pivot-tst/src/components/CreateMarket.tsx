@@ -261,7 +261,7 @@ const CreateMarket = () => {
       ]);
       return;
     }
-    console.log("creating market with--", title, description, resolution_criteria, formattedEndTime, initialLiquidity);
+    console.log("creating market with--", title, description, resolution_criteria, formattedEndTime, initialLiquidity, currentStep, progress);
     try {
       const response = await signAndSubmitTransaction(
         createMarket({
