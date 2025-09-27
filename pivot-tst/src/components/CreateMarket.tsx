@@ -534,7 +534,7 @@ const CreateMarket = () => {
           </div>
         </div>
       </header>
-      <div className="max-w-4xl mx-auto px-6 py-8">
+      <div className="max-w-4xl mx-auto px-4 py-8">
         {messages.length === 0 ? (
           /* Welcome State */
           <div className="text-center items-center space-y-8">
@@ -575,7 +575,7 @@ const CreateMarket = () => {
                         confidence: 0.7,
                         sentiment_score: 0.5,
                         key_factors: [],
-                        context: "Custom market created by user",
+                        context: "Custom market",
                         sources: [],
                       };
 
@@ -618,12 +618,12 @@ const CreateMarket = () => {
 
               <motion.h2
                 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold 
-             bg-slate-300 flex bg-clip-text text-transparent text-center"
+             bg-slate-300 bg-clip-text text-transparent text-center leading-tight pb-1"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.4 }}
               >
-                Greetings, Fren 👋
+                Greetings 👋
               </motion.h2>
 
               <motion.p

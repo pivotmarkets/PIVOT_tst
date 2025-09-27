@@ -55,7 +55,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                       </span>
                       <span className="">•</span>
                       <span className="whitespace-nowrap hover:text-gray-300 cursor-pointer transition-colors">
-                        How it works
+                        Terms of service
                       </span>
                     </div>
                   </div>

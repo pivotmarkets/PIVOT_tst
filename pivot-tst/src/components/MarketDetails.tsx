@@ -77,8 +77,8 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const [userPositions, setUserPositions] = useState<Position[]>([]);
   const [marketDetails, setMarketDetails] = useState<MarketDetails>(null as any);
   const [isOpen, setIsOpen] = useState(false);
-  const [side, setSide] = useState<"YES" | "NO" | null>(null);
-  const [amountUSDC, setAmountUSDC] = useState("5");
+  const [side, setSide] = useState<"YES" | "NO">(null as any);
+  const [amountUSDC, setAmountUSDC] = useState("");
   const [selectedTimeFilter, setSelectedTimeFilter] = useState("ALL");
   const [priceHistory, setPriceHistory] = useState<any>([]);
   const [latestTrades, setLatestTrades] = useState<any>([]);
@@ -171,16 +171,31 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   }, [marketDetails, userPositions, market?.id, account?.address]);
 
   // helper
-  const calculatePayout = (side: "YES" | "NO", amountUSDC: number) => {
-    if (!amountUSDC || amountUSDC <= 0) return 0;
-    const price: any = side === "YES" ? marketDetails.yesPrice : marketDetails.noPrice;
-    const payout = (amountUSDC * 10000) / price;
+  const calculatePayout = (betSide, amount) => {
+    if (!betSide || !amount || amount <= 0) return 0;
+
+    // Apply 1% trading fee
+    const feeRate = 0.01; // 1%
+    const amountAfterFee = amount * (1 - feeRate);
+
+    // Calculate payout using your contract's logic
+    const price = betSide === "YES" ? yesPrice : noPrice;
+    const payout = (amountAfterFee * 10000) / (price * 10000); // Matching your contract format
+
     return payout;
+  };
+
+  const calculateFee = (amount) => {
+    if (!amount || amount <= 0) return 0;
+    return amount * 0.01; // 1% fee
   };
 
   const handleBuy = async () => {
     if (!account || !side) return;
-
+    if (sliderValue > balance) {
+      alert(`Insufficient balance. Your balance is ${balance} USDC`);
+      return;
+    }
     try {
       const marketId = marketDetails.id;
       const amount = parseFloat(amountUSDC);
@@ -225,11 +240,45 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
       // Reset & close
       setIsOpen(false);
-      setSide(null);
+      setSide(null as any);
       setAmountUSDC("");
     } catch (error) {
       console.error(`Error buying ${side} position:`, error);
     }
+  };
+
+  const setValidatedAmount = (value: string) => {
+    const numValue = parseFloat(value) || 0;
+    const cappedValue = Math.min(numValue, balance);
+    setAmountUSDC(cappedValue > 0 ? cappedValue.toString() : "");
+  };
+
+  // Handle input change with validation
+  const handleAmountChange = (e: { target: { value: any } }) => {
+    const value = e.target.value;
+    if (value === "" || value === "0") {
+      setAmountUSDC("");
+      return;
+    }
+    setValidatedAmount(value);
+  };
+
+  // Handle slider change
+  const handleSliderChange = (e: { target: { value: string } }) => {
+    const value = parseFloat(e.target.value);
+    setAmountUSDC(value > 0 ? value.toString() : "");
+  };
+
+  // Button increment/decrement handlers
+  const adjustAmount = (change: number) => {
+    const currentValue = parseFloat(amountUSDC) || 0;
+    const newValue = currentValue + change;
+    setValidatedAmount(Math.max(0, newValue).toString());
+  };
+
+  // Set max amount (user's balance)
+  const setMaxAmount = () => {
+    setAmountUSDC(balance.toString());
   };
 
   const onBuyPositionClick = async (
@@ -669,6 +718,9 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   // Determine which outcome is dominating
   const isDominatingYes = market.yesPrice > market.noPrice;
   const dominatingOutcome = isDominatingYes ? "YES" : "NO";
+  const currentAmount = parseFloat(amountUSDC) || 0;
+  const isOverBalance = currentAmount > balance;
+  const sliderValue = Math.min(currentAmount, balance);
 
   // Custom Tooltip component
   const CustomTooltip = ({ active, payload }: any) => {
@@ -853,7 +905,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
           </div>
 
           {/* Chart */}
-          <div className="h-64 sm:h-80 -ml-7.5 sm:mx-0">
+          <div className="h-64 sm:h-80 w-full -translate-x-[27px] sm:translate-x-0 transform sm:mx-0">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
                 data={priceHistory}
@@ -992,7 +1044,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
         {isOpen && (
           <div className="fixed inset-0 flex items-center backdrop-blur-sm justify-center bg-black/50 z-50">
-            <div className="bg-[#232328] text-white pb-8 pt-6 px-6 rounded-xl shadow-lg w-[400px] max-w-[90vw]">
+            <div className="bg-[#232328] text-white pb-8 pt-4 px-4 rounded-2xl shadow-lg w-[400px] max-w-[90vw]">
               {/* Header with Yes/No buttons */}
               <div className="flex gap-4 mb-6">
                 <button
@@ -1015,10 +1067,10 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   <button
                     onClick={() => {
                       setIsOpen(false);
-                      setSide(null);
+                      setSide(null as any);
                       setAmountUSDC("");
                     }}
-                    className="px-3 py-2 bg-[#3a3d4a] rounded-lg text-lg hover:bg-[#4a4d5a]"
+                    className="w-8 h-8 flex items-center justify-center bg-[#3a3d4a] rounded-md text-xl hover:bg-[#2d2f37]"
                   >
                     ×
                   </button>
@@ -1027,41 +1079,78 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
               {/* Bet Amount Section */}
               <div className="mb-6">
-                <label className="block mb-3 text-gray-300 text-sm font-medium">Bet amount</label>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-gray-300 text-sm font-medium">Bet amount</label>
+                  {/* <button
+            onClick={setMaxAmount}
+            className="text-xs text-blue-400 hover:text-blue-300 underline"
+          >
+            Max: {balance} USDC
+          </button> */}
+                </div>
+
                 <div className="relative">
-                  <div className="flex items-center bg-[#1e2028] border-2 border-[#4a5568] rounded-lg p-3 focus-within:border-[#008259]">
+                  <div
+                    className={`flex items-center bg-[#1e2028] border-2 rounded-lg p-3 focus-within:border-[#008259] ${
+                      isOverBalance ? "border-red-500" : "border-[#4a5568]"
+                    }`}
+                  >
                     <div className="flex items-center gap-2 mr-3">
-                      <div className="w-6 h-6 bg-blue-400 rounded-full flex items-center justify-center text-xs font-bold">
-                        $
-                      </div>
+                      <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-6 h-6 rounded-full" />
                       <input
                         type="number"
                         value={amountUSDC}
-                        onChange={(e) => setAmountUSDC(e.target.value)}
+                        onChange={handleAmountChange}
                         className="bg-transparent text-white text-lg font-semibold outline-none min-w-0 flex-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        placeholder="5"
+                        placeholder="0"
+                        max={balance}
                       />
                     </div>
-                    <div className="flex -ml-28 gap-2">
-                      <button
-                        onClick={() => setAmountUSDC((prev) => Math.max(0, (parseFloat(prev) || 0) - 10).toString())}
-                        className="px-3 py-1 bg-[#3a3d4a] rounded text-sm hover:bg-[#4a4d5a] transition-colors"
-                      >
-                        -10
-                      </button>
-                      <button
-                        onClick={() => setAmountUSDC((prev) => ((parseFloat(prev) || 0) + 10).toString())}
-                        className="px-3 py-1 bg-[#3a3d4a] rounded text-sm hover:bg-[#4a4d5a] transition-colors"
-                      >
-                        +10
-                      </button>
-                      <button
-                        onClick={() => setAmountUSDC((prev) => ((parseFloat(prev) || 0) + 50).toString())}
-                        className="px-3 py-1 bg-[#3a3d4a] rounded text-sm hover:bg-[#4a4d5a] transition-colors"
-                      >
-                        +50
-                      </button>
-                    </div>
+                    {/* <div className="flex -ml-28 gap-2">
+              <button
+                onClick={() => adjustAmount(-10)}
+                className="px-3 py-1 bg-[#3a3d4a] rounded text-sm hover:bg-[#4a4d5a] transition-colors"
+              >
+                -10
+              </button>
+              <button
+                onClick={() => adjustAmount(10)}
+                className="px-3 py-1 bg-[#3a3d4a] rounded text-sm hover:bg-[#4a4d5a] transition-colors"
+              >
+                +10
+              </button>
+              <button
+                onClick={() => adjustAmount(50)}
+                className="px-3 py-1 bg-[#3a3d4a] rounded text-sm hover:bg-[#4a4d5a] transition-colors"
+              >
+                +50
+              </button>
+            </div> */}
+                  </div>
+
+                  {/* Error message */}
+                  {isOverBalance && (
+                    <p className="text-red-400 text-xs mt-1">Amount exceeds your balance of {balance} USDC</p>
+                  )}
+                </div>
+
+                {/* Amount Slider */}
+                <div className="mt-4">
+                  <input
+                    type="range"
+                    min="0"
+                    max={balance}
+                    step="0.1"
+                    value={sliderValue}
+                    onChange={handleSliderChange}
+                    className="w-full h-2 bg-[#1e2028] rounded-lg appearance-none cursor-pointer slider"
+                    style={{
+                      background: `linear-gradient(to right, ${side === "YES" ? "#008259" : "#8b4444"} 0%, ${side === "YES" ? "#008259" : "#8b4444"} ${(sliderValue / balance) * 100}%, #1e2028 ${(sliderValue / balance) * 100}%, #1e2028 100%)`,
+                    }}
+                  />
+                  <div className="flex justify-between text-xs text-gray-400 mt-1">
+                    <span>$0</span>
+                    <span>${balance}</span>
                   </div>
                 </div>
               </div>
@@ -1069,7 +1158,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
               {/* Probability and Payout Info */}
               <div className="mb-6 space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-400 text-sm">Latest probability</span>
+                  <span className="text-gray-400 text-sm">Current probability</span>
                   <div className="flex items-center gap-2">
                     <span className="text-white text-lg font-bold">
                       {side === "YES" ? `${(yesPrice * 100).toFixed(2)}%` : `${(noPrice * 100).toFixed(2)}%`}
@@ -1085,10 +1174,10 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
                         return priceChange !== 0 ? (
                           <span className={`text-sm ${isPriceIncrease ? "text-emerald-400" : "text-rose-400"}`}>
-                            {isPriceIncrease ? "↑" : "↓"} {(Math.abs(priceChange) / 100).toFixed(2)}% 🔒
+                            {isPriceIncrease ? "↑" : "↓"} {(Math.abs(priceChange) / 100).toFixed(2)}%
                           </span>
                         ) : (
-                          <span className="text-gray-400 text-sm">No change </span>
+                          <span className="text-gray-400 text-sm">0%</span>
                         );
                       })()}
                   </div>
@@ -1098,13 +1187,13 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   <span className="text-gray-400 text-sm">To win</span>
                   <div className="flex items-center gap-2">
                     <span className="text-white text-lg font-bold">
-                      ${amountUSDC ? calculatePayout(side as any, parseFloat(amountUSDC)).toFixed(2) : "0"}
+                      ${amountUSDC ? calculatePayout(side, parseFloat(amountUSDC)).toFixed(2) : "0"}
                     </span>
                     <span className="text-emerald-400 text-sm font-medium">
                       +
                       {amountUSDC
                         ? (
-                            (calculatePayout(side as any, parseFloat(amountUSDC)) / parseFloat(amountUSDC || "1") - 1) *
+                            (calculatePayout(side, parseFloat(amountUSDC)) / parseFloat(amountUSDC || "1") - 1) *
                             100
                           ).toFixed(1)
                         : "0"}
@@ -1117,24 +1206,46 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
               {/* Action Button */}
               <button
                 onClick={handleBuy}
-                disabled={!side || !amountUSDC}
+                disabled={!side || !amountUSDC || isOverBalance || currentAmount === 0}
                 className={`w-full py-4 rounded-lg font-semibold text-lg transition-colors ${
                   side === "NO"
                     ? "bg-[#d32f2f] hover:bg-[#b71c1c] text-white"
                     : "bg-[#008259] hover:bg-[#006b47] text-white"
                 } disabled:bg-gray-600 disabled:cursor-not-allowed`}
               >
-                Buy {side || "NO"} to win $
-                {amountUSDC ? calculatePayout(side as any, parseFloat(amountUSDC)).toFixed(1) : "0"}
+                {isOverBalance
+                  ? "Insufficient Balance"
+                  : `Buy ${side || "NO"} to win $${amountUSDC ? calculatePayout(side, parseFloat(amountUSDC)).toFixed(1) : "0"}`}
               </button>
 
               {/* Balance */}
               <div className="mt-6 flex justify-between items-center text-sm">
-                <span className="text-gray-400">bal:</span>
+                <span className="text-gray-400">Your Balance:</span>
                 <div className="flex items-center gap-2">
                   <span className="text-white">{balance} USDC</span>
                 </div>
               </div>
+
+              <style jsx>{`
+                .slider::-webkit-slider-thumb {
+                  appearance: none;
+                  width: 20px;
+                  height: 20px;
+                  border-radius: 50%;
+                  background: ${side === "YES" ? "#008259" : "#8b4444"};
+                  cursor: pointer;
+                  border: 2px solid white;
+                }
+
+                .slider::-moz-range-thumb {
+                  width: 20px;
+                  height: 20px;
+                  border-radius: 50%;
+                  background: ${side === "YES" ? "#008259" : "#8b4444"};
+                  cursor: pointer;
+                  border: 2px solid white;
+                }
+              `}</style>
             </div>
           </div>
         )}

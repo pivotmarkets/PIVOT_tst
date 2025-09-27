@@ -97,7 +97,7 @@ export function WalletSelector() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-slate-200 dark:text-slate-100">
-                    {account?.ansName || "User"}
+                    {account?.ansName || "Creator"}
                   </span>
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                 </div>
