@@ -171,7 +171,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   }, [marketDetails, userPositions, market?.id, account?.address]);
 
   // helper
-  const calculatePayout = (betSide, amount) => {
+  const calculatePayout = (betSide: string, amount: number) => {
     if (!betSide || !amount || amount <= 0) return 0;
 
     // Apply 1% trading fee
@@ -183,11 +183,6 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     const payout = (amountAfterFee * 10000) / (price * 10000); // Matching your contract format
 
     return payout;
-  };
-
-  const calculateFee = (amount) => {
-    if (!amount || amount <= 0) return 0;
-    return amount * 0.01; // 1% fee
   };
 
   const handleBuy = async () => {
@@ -267,18 +262,6 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const handleSliderChange = (e: { target: { value: string } }) => {
     const value = parseFloat(e.target.value);
     setAmountUSDC(value > 0 ? value.toString() : "");
-  };
-
-  // Button increment/decrement handlers
-  const adjustAmount = (change: number) => {
-    const currentValue = parseFloat(amountUSDC) || 0;
-    const newValue = currentValue + change;
-    setValidatedAmount(Math.max(0, newValue).toString());
-  };
-
-  // Set max amount (user's balance)
-  const setMaxAmount = () => {
-    setAmountUSDC(balance.toString());
   };
 
   const onBuyPositionClick = async (
@@ -1508,7 +1491,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                                 className={`w-full sm:w-auto px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
                                   isLoading
                                     ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                                    : "bg-emerald-600 hover:bg-green-600 text-white"
+                                    : "bg-emerald-600 hover:bg-green-800/80 text-white"
                                 }`}
                               >
                                 {isClaimed ? (
@@ -1607,7 +1590,8 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                       const isYesTrade = parseFloat(trade.yesPriceAfter) > parseFloat(trade.yesPriceBefore);
                       const isSelling = action === "Sold";
                       const actualSide = isSelling ? (isYesTrade ? "No" : "Yes") : isYesTrade ? "Yes" : "No";
-                      const isClaimOrResolve = action === "Claimed Winnings" || action === "Resolved";
+                      const isClaimOrResolve = action === "Added Liquidity" || action === "Resolved"
+                      const isClaim = action === "Claimed Winnings";
 
                       return (
                         <div
@@ -1664,7 +1648,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                                         : action === "Claimed Winnings"
                                           ? "bg-amber-100/80 text-amber-700"
                                           : action === "Resolved"
-                                            ? "text-yellow-600"
+                                            ? "bg-emerald-100/80 text-emerald-700"
                                             : isYesTrade
                                               ? "bg-emerald-100/80 text-emerald-700"
                                               : "bg-rose-100/70 text-rose-700"
@@ -1688,14 +1672,14 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                               <div className="text-xs sm:text-sm text-slate-400 font-medium">
                                 {formatPrice((trade.amount / 100).toString())} USDC
                               </div>
-                              {priceChange !== 0 && (
+                              {priceChange !== 0 && !isClaimOrResolve && (
                                 <div
                                   className={`text-xs flex items-center justify-end mt-0.5 ${
                                     isPriceIncrease ? "text-emerald-400" : "text-rose-400"
                                   }`}
                                 >
                                   {isPriceIncrease ? "+" : ""}
-                                  {(priceChange / 100).toFixed(2)}%
+                                  {isClaim ? "-" : `${(priceChange / 100).toFixed(2)}%`}
                                 </div>
                               )}
                             </div>

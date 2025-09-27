@@ -60,7 +60,7 @@ const CreateMarket = () => {
 
   const USDC_DECIMALS = 6; // USDC has 6 decimals
 
-  const userId = "steel"; // You can make this dynamic
+  const userId = "Creator"; // You can make this dynamic
 
   const [suggestedQuestions] = useState([
     "Will Bitcoin reach $150,000 by end of 2025?",
@@ -511,8 +511,8 @@ const CreateMarket = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#232328] via-[#1a1a1f] to-[#0f0f14]">
       {" "}
-      <header className="bg-[#1a1a1e2c] sticky top-0 z-40 overflow-hidden animate-fadeInUp border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
-        <div className="max-w-7xl mx-auto sm:px-1 px-3 py-4">
+      <header className="bg-[#1a1a1e2c] sticky top-0 z-40 overflow-hidden animate-fadeInUp border-b border-b-[var(--Stroke-Dark,#2c2c2f)] px-3 sm:px-4 lg:px-4">
+        <div className="max-w-7xl mx-auto py-3 sm:py-4">
           <div className="flex justify-between items-center px-0">
             {/* Logo Section */}
             <div className="cursor-pointer flex flex-col" onClick={() => router.push("/")}>
@@ -603,7 +603,7 @@ const CreateMarket = () => {
                 ].map(({ icon: Icon, onClick }, idx) => (
                   <motion.div
                     key={idx}
-                    className={`w-12 h-12 rounded-2xl bg-slate-800/80 flex mt-12 items-center justify-center shadow-sm shadow-black/40 ${onClick ? "cursor-pointer hover:shadow-lime-500/20" : ""}`}
+                    className={`w-12 h-12 rounded-2xl bg-[#29292e] flex mt-12 items-center justify-center shadow-sm shadow-black/30 ${onClick ? "cursor-pointer hover:shadow-lime-500/20" : ""}`}
                     initial={{ opacity: 0, rotate: -90 }}
                     animate={{ opacity: 1, rotate: 0 }}
                     transition={{ duration: 0.5, delay: 0.3 + idx * 0.1 }}
