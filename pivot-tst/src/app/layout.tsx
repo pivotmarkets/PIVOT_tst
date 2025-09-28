@@ -11,13 +11,13 @@ import "./globals.css";
 export const metadata: Metadata = {
   applicationName: "Pivot Markets",
   title: "Pivot Markets",
-  description: "Aptos Boilerplate Template",
+  description: "An AI-powered permissionless prediction markets protocol",
   manifest: "/manifest.json",
   icons: {
     icon: [
-      { url: "/icons/pivot-200.png", type: "image/svg+xml" },
-      { url: "/icons/pivot-200", sizes: "192x192", type: "image/png" },
-      { url: "/icons/pivot-200.png", sizes: "512x512", type: "image/png" },
+      { url: "/icons/Pivot.svg", type: "image/svg+xml" },
+      { url: "/icons/Pivot.svg", sizes: "192x192", type: "image/png" },
+      { url: "/icons/Pivot.svg", sizes: "512x512", type: "image/png" },
     ],
     apple: { url: "/icons/pivot-200.png", sizes: "192x192", type: "image/png" },
   },

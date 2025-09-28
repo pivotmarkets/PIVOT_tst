@@ -888,7 +888,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
           </div>
 
           {/* Chart */}
-          <div className="h-64 sm:h-80 w-full -translate-x-[27px] sm:translate-x-0 transform sm:mx-0">
+          <div className="h-64 sm:h-80 w-full -translate-x-[20px] sm:translate-x-0 transform sm:mx-0">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
                 data={priceHistory}
@@ -1679,7 +1679,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                                   }`}
                                 >
                                   {isPriceIncrease ? "+" : ""}
-                                  {isClaim ? "-" : `${(priceChange / 100).toFixed(2)}%`}
+                                  {isClaim ? "" : `${(priceChange / 100).toFixed(2)}%`}
                                 </div>
                               )}
                             </div>

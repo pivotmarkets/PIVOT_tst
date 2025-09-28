@@ -63,8 +63,8 @@ const CreateMarket = () => {
   const userId = "Creator"; // You can make this dynamic
 
   const [suggestedQuestions] = useState([
-    "Will Bitcoin reach $150,000 by end of 2025?",
-    "Will OpenAI release GPT-5 in 2025?",
+    "Will Bitcoin fall below $100,000 before January 1, 2026?",
+    "Will Singapore establish an official national Bitcoin reserve in 2025?",
     "Will SpaceX successfully land humans on Mars by 2030?",
   ]);
 
@@ -134,9 +134,16 @@ const CreateMarket = () => {
   const { balance } = useUSDCBalance();
 
   const handleLiquidityChange = (e: { target: { value: any } }) => {
-    const value = e.target.value;
-    setInitialLiquidity(value);
-
+    let value = e.target.value;
+    
+    // Auto-limit to max balance if exceeded
+    if (value && parseFloat(value) > balance) {
+      value = Math.max(2, balance - 0.05).toFixed(2); 
+      setInitialLiquidity(value);
+    } else {
+      setInitialLiquidity(value);
+    }
+  
     if (value && parseFloat(value) < 2) {
       setError("Min 2 USDC");
     } else if (value && parseFloat(value) > balance) {
@@ -647,11 +654,11 @@ const CreateMarket = () => {
                       end_date: "",
                       resolution_criteria: "",
                       description: "",
-                      ai_probability: 0.5,
-                      confidence: 0.7,
-                      sentiment_score: 0.5,
+                      ai_probability: 0,
+                      confidence: 0,
+                      sentiment_score: 0,
                       key_factors: [],
-                      context: "Custom market created by user",
+                      context: "--",
                       sources: [],
                     };
 
@@ -1050,9 +1057,20 @@ const CreateMarket = () => {
                   </div>
                   {/* New USDC Bet Amount Input */}
                   <div>
-                    <h4 className="text-sm font-semibold text-green-400 mb-1">
+                    <h4 className="text-sm font-semibold text-green-400 mb-1 flex items-center gap-2">
                       Initial Liquidity (USDC)
-                      <span className="text-red-400 ml-1">*</span>
+                      <span className="text-red-400">*</span>
+                      {/* Info icon with tooltip */}
+                      <div className="relative group">
+                        <div className="w-4 h-4 bg-gray-600 rounded-full flex items-center justify-center text-xs text-gray-300 cursor-pointer hover:bg-gray-500 transition-colors">
+                          i
+                        </div>
+
+                        {/* Tooltip */}
+                        <div className="absolute left-0 top-6 bg-gray-900 border border-gray-600 rounded-lg p-3 text-xs text-gray-200 w-64 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                          More liquidity = better trading experience and higher potential creator earnings. Your contribution will be split 50/50 between YES and NO pools.
+                        </div>
+                      </div>
                     </h4>
 
                     <div className="relative">
@@ -1064,14 +1082,14 @@ const CreateMarket = () => {
                         onChange={handleLiquidityChange}
                         placeholder={`2`}
                         className={`
-                  w-full bg-[#2f2f35]/70 border ${
-                    error ? "border-red-500" : "border-gray-600/50"
-                  } rounded-lg p-3 text-gray-100 text-sm pr-16
-                  [appearance:textfield] 
-                  [&::-webkit-outer-spin-button]:appearance-none 
-                  [&::-webkit-inner-spin-button]:appearance-none
-                  focus:outline-none focus:border-green-400 transition-colors
-                `}
+        w-full bg-[#2f2f35]/70 border ${
+          error ? "border-red-500" : "border-gray-600/50"
+        } rounded-lg p-3 text-gray-100 text-sm pr-16
+        [appearance:textfield] 
+        [&::-webkit-outer-spin-button]:appearance-none 
+        [&::-webkit-inner-spin-button]:appearance-none
+        focus:outline-none focus:border-green-400 transition-colors
+      `}
                         required
                       />
                     </div>
@@ -1148,7 +1166,7 @@ const CreateMarket = () => {
                   }}
                   className="w-full bg-[#2f2f35]/70 border border-gray-600/50 rounded-lg p-3 text-gray-100 text-sm resize-none focus:border-green-400 focus:outline-none transition-colors"
                   rows={3}
-                  placeholder="How will this market be resolved? What sources will be used to determine the outcome?"
+                  placeholder="Describe exactly how this market will be resolved. Be specific and include links to the sources that will determine the outcome."
                 />
               </div>
 
