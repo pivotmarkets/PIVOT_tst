@@ -334,7 +334,7 @@ class EnhancedAIMarketAssistant:
     async def _empty_dict(self):
         return {}
     
-    async def generate_prediction_markets_async(self, query: str, num_suggestions: int = 8) -> List[MarketSuggestion]:
+    async def generate_prediction_markets_async(self, query: str, num_suggestions: int = 10) -> List[MarketSuggestion]:
         """Generate prediction markets with real-time data integration"""
         if not self.gemini_client:
             return self._fallback_suggestions(query)
@@ -594,7 +594,7 @@ class EnhancedPredictionAPI:
             try:
                 data = request.json
                 query = data.get('query', '')
-                num_suggestions = data.get('num_suggestions', 8)
+                num_suggestions = data.get('num_suggestions', 10)
                 
                 if not query:
                     return jsonify({'success': False, 'error': 'Query is required'}), 400
@@ -719,7 +719,7 @@ class EnhancedPredictionAPI:
             try:
                 data = request.json
                 query = data.get('query', '')
-                num_suggestions = data.get('num_suggestions', 8)
+                num_suggestions = data.get('num_suggestions', 10)
                 
                 if not query:
                     return jsonify({'success': False, 'error': 'Query is required'}), 400
