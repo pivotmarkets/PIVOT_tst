@@ -1,23 +1,19 @@
-# Core dependencies
-pandas>=1.5.0
-requests>=2.28.0
-schedule>=1.2.0
+# Flask web framework
+flask==3.0.0
+flask-cors==4.0.0
 
-# data source APIs
-praw>=7.7.0  # Reddit API
-pytrends>=4.9.0  # Google Trends
-feedparser>=6.0.10  # RSS feeds
-beautifulsoup4>=4.12.0  # Web scraping
+# Google Generative AI (Gemini)
+google-generativeai==0.3.2
 
-# AI/ML for sentiment analysis
-transformers>=4.21.0
-torch>=1.12.0
-openai>=0.27.0  # Optional
+# Environment variables
+python-dotenv==1.0.0
 
-# Aptos SDK
-aptos-sdk>=0.6.0
+# HTTP requests
+requests==2.31.0
+aiohttp==3.9.1
 
-# Logging and utilities
-python-dotenv>=0.20.0
+# SSL certificates
+certifi==2023.11.17
 
+# Production server
 gunicorn==21.2.0
