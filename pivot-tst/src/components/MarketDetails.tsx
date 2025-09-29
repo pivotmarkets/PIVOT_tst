@@ -1342,7 +1342,24 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
             <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
               <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4">Resolution Criteria</h3>
-              <div className="text-sm sm:text-base font-medium text-slate-200">{marketDetails.resolutionCriteria}</div>
+              <div className="text-sm sm:text-base font-medium text-slate-200 break-words whitespace-pre-wrap">
+                {marketDetails.resolutionCriteria.split(/(https?:\/\/[^\s]+)/g).map((part, i) => {
+                  if (part.match(/^https?:\/\//)) {
+                    return (
+                      <a
+                        key={i}
+                        href={part}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-400 hover:text-blue-300 underline break-all"
+                      >
+                        {part}
+                      </a>
+                    );
+                  }
+                  return part;
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -1590,7 +1607,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                       const isYesTrade = parseFloat(trade.yesPriceAfter) > parseFloat(trade.yesPriceBefore);
                       const isSelling = action === "Sold";
                       const actualSide = isSelling ? (isYesTrade ? "No" : "Yes") : isYesTrade ? "Yes" : "No";
-                      const isClaimOrResolve = action === "Added Liquidity" || action === "Resolved"
+                      const isClaimOrResolve = action === "Added Liquidity" || action === "Resolved";
                       const isClaim = action === "Claimed Winnings";
 
                       return (

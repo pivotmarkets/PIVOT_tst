@@ -186,8 +186,7 @@ const ArcMeter = ({ percentage, size = 80 }: any) => {
     requestAnimationFrame(animate);
   }, [percentage]);
 
-  const strokeDashoffset =
-    circumference - (animatedValue / 100) * circumference;
+  const strokeDashoffset = circumference - (animatedValue / 100) * circumference;
 
   return (
     <div className="relative" style={{ width: size, height: size / 2 + 4 }}>
@@ -213,18 +212,13 @@ const ArcMeter = ({ percentage, size = 80 }: any) => {
       </svg>
       {/* Percentage text */}
       <div className="absolute inset-0 flex items-end justify-center pb-1">
-        <span
-          className={`text-sm font-bold ${
-            percentage >= 50 ? "text-green-400" : "text-red-400"
-          }`}
-        >
+        <span className={`text-sm font-bold ${percentage >= 50 ? "text-green-400" : "text-red-400"}`}>
           {animatedValue.toFixed(1)}%
         </span>
       </div>
     </div>
   );
 };
-
 
 const MarketCard = ({ market }: any) => {
   const yesPercentage = market.yesPrice * 100;
@@ -339,7 +333,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
         }));
 
         // Combine intro message with individual news item messages
-        console.log("insights", insights)
+        console.log("insights", insights);
         setMessages(insightMessages);
       } else {
         throw new Error("No trending news found in response");
@@ -653,7 +647,7 @@ export default function PivotMarketApp() {
       {/* Hero Section */}
 
       <div
-        className="w-full mb-12 bg-cover bg-center"
+        className="w-full mb-12 bg-cover overflow-hidden bg-center"
         style={{
           animationDelay: "0.2s",
           backgroundImage: "url('/cover.png')",
@@ -661,14 +655,13 @@ export default function PivotMarketApp() {
       >
         {/* Inner content constrained to max width */}
         <div className="max-w-7xl mx-auto px-4 py-12 rounded-2xl">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col md:flex-row items-start justify-between gap-8 relative">
+            <div className="flex-1">
               <h1 className="text-4xl font-bold text-white mb-4">Pivot Markets</h1>
-              <p className="text-gray-200 text-lg max-w-2xl">
+              <p className="text-[#c6c6c7] text-lg max-w-2xl">
                 Discover and trade future predictions with real-time insights in transparent, trustless on-chain
                 markets.
               </p>
-
               <div className="flex items-center mt-6 gap-4">
                 <button
                   className="flex items-center gap-2 px-4 py-3 bg-[#008259] hover:bg-[#095435] text-white rounded-lg transition-colors"
@@ -679,13 +672,17 @@ export default function PivotMarketApp() {
                 </button>
               </div>
             </div>
+
+            {/* Hero Image - positioned at bottom right */}
+            <div className="absolute lg:-bottom-[146px] -bottom-[149px]  md:-bottom-[156px] -right-[130px]  lg:-right-[280px] w-full md:w-auto md:max-w-md lg:max-w-[39.5rem]">
+              <img src="/hero.png" alt="Pivot Markets" className="w-full h-auto rounded-lg" />
+            </div>
           </div>
         </div>
       </div>
       <div className="max-w-7xl mx-auto mb-20 px-4 ">
         {/* Filters Section */}
         <div className="mb-8 ">
-          {/* Category Tabs */}
           <div className="flex items-center gap-1 mb-6 flex-wrap">
             {categories.map((category) => (
               <button
@@ -842,7 +839,7 @@ export default function PivotMarketApp() {
           })}
         </div>
 
-        {markets && filteredMarkets.length === 0  && (
+        {markets && filteredMarkets.length === 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3, 4, 5, 6].map((index) => (
               <div key={index} className="bg-[#2f2f33] border border-gray-700/30 rounded-2xl p-6 animate-pulse">
