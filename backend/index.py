@@ -581,8 +581,8 @@ class EnhancedPredictionAPI:
     """Enhanced API with real-time data-driven predictions"""
     
     def __init__(self):
-        self.app = Flask(__name__)  
-        CORS(self.app, resources={r"/api/*": {"origins": "*"}})
+        self.app = Flask(__name__)
+        CORS(self.app)
         self.ai_assistant = EnhancedAIMarketAssistant()
         self.register_routes()
     
@@ -711,6 +711,40 @@ class EnhancedPredictionAPI:
                 })
             except Exception as e:
                 logger.error(f"Error fetching Reddit trending: {e}")
+                return jsonify({'success': False, 'error': str(e)}), 500
+        
+        @self.app.route('/api/market/search-suggestions', methods=['POST'])
+        def get_market_suggestions():
+            """Market search suggestions endpoint (alias for /api/predict)"""
+            try:
+                data = request.json
+                query = data.get('query', '')
+                num_suggestions = data.get('num_suggestions', 6)
+                
+                if not query:
+                    return jsonify({'success': False, 'error': 'Query is required'}), 400
+                
+                session_id = str(uuid.uuid4())
+                
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    suggestions = loop.run_until_complete(
+                        self.ai_assistant.generate_prediction_markets_async(query, num_suggestions)
+                    )
+                finally:
+                    loop.close()
+                
+                return jsonify({
+                    'success': True,
+                    'session_id': session_id,
+                    'query': query,
+                    'prediction_markets': [asdict(s) for s in suggestions],
+                    'count': len(suggestions),
+                    'note': 'Predictions based on real-time data'
+                })
+            except Exception as e:
+                logger.error(f"Error in search suggestions: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
         
         @self.app.route('/api/market/analyze', methods=['POST'])
