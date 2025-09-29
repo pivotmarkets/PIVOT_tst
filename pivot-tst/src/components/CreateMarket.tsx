@@ -1067,7 +1067,7 @@ const CreateMarket = () => {
                         </div>
 
                         {/* Tooltip */}
-                        <div className="absolute left-0 top-6 bg-gray-900 border border-gray-600 rounded-lg p-3 text-xs text-gray-200 w-64 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                        <div className="absolute -left-20 lg:left-0 top-6 bg-gray-900 border border-gray-600 rounded-lg p-3 text-xs text-gray-200 w-64 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
                           More liquidity = better trading experience and higher potential creator earnings. Your contribution will be split 50/50 between YES and NO pools.
                         </div>
                       </div>

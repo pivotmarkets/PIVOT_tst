@@ -13,6 +13,7 @@ import {
   ScanEye,
   ScanEyeIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 import { WalletSelector } from "../components/WalletSelector";
 import { useRouter } from "next/navigation";
 
@@ -223,23 +224,42 @@ const ArcMeter = ({ percentage, size = 80 }: any) => {
 const MarketCard = ({ market }: any) => {
   const yesPercentage = market.yesPrice * 100;
   const router = useRouter();
+  const { account } = useWallet();
 
   const handleMarketClick = () => {
+    // Prevent navigation if user is not signed in
+    if (!account?.address) {
+
+      toast.error("Please sign in to view market details", {
+        style: {
+          backgroundColor: "#7f1d1d",
+          color: "#fca5a5",
+          fontWeight: "bold",
+          border: "1px solid #fca5a5",
+        },
+        duration: 6000,
+      });
+      // or use a toast notification instead
+      return;
+    }
     // Create a URL-friendly slug from the market title
     const slug = market.title
       .toLowerCase()
       .replace(/[^\w\s-]/g, "")
       .replace(/\s+/g, "-")
       .trim();
-
+  
     router.push(`/market/${slug}/${market.id}`);
   };
 
   return (
-    <div
-      className="bg-[#2f2f33] border border-gray-700/30 rounded-2xl p-6 hover:border-[#66666765] transition-all duration-300 cursor-pointer group h-full flex flex-col"
-      onClick={handleMarketClick}
-    >
+   <div
+  className={`bg-[#2f2f33] border border-gray-700/30 rounded-2xl p-6 hover:border-[#66666765] transition-all duration-300 h-full flex flex-col ${
+    account?.address ? 'cursor-pointer group' : 'cursor-auto'
+  }`}
+  onClick={handleMarketClick}
+  title={!account?.address ? "Sign in to view market" : ""}
+>
       {/* Header with title and arc meter */}
       <div className="flex items-start justify-between mb-6">
         <div className="flex-1 pr-4">
