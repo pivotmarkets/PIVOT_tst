@@ -581,8 +581,8 @@ class EnhancedPredictionAPI:
     """Enhanced API with real-time data-driven predictions"""
     
     def __init__(self):
-        self.app = Flask(__name__)
-        CORS(self.app)
+        self.app = Flask(__name__)  
+        CORS(self.app, resources={r"/api/*": {"origins": "*"}})
         self.ai_assistant = EnhancedAIMarketAssistant()
         self.register_routes()
     
