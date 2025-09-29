@@ -144,7 +144,7 @@ interface MarketSuggestion {
     private baseUrl: string;
     public sessionId: string | null = null;
   
-    constructor(baseUrl: string = "http://localhost:8000") {
+    constructor(baseUrl: string = "https://pivot-tst.onrender.com") {
       this.baseUrl = baseUrl;
     }
   

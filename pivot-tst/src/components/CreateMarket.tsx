@@ -354,14 +354,14 @@ const CreateMarket = () => {
 
       if (!sessionId) {
         // First message -> start market creation
-        response = await fetch("http://localhost:8000/api/market/search-suggestions", {
+        response = await fetch("https://pivot-tst.onrender.com/api/market/search-suggestions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query: input, user_id: userId }),
         });
       } else {
         // Subsequent messages -> continue
-        response = await fetch("http://localhost:8000/api/market/continue", {
+        response = await fetch("https://pivot-tst.onrender.com/api/market/continue", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ session_id: sessionId, response: input }),
