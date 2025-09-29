@@ -19,3 +19,5 @@ aptos-sdk>=0.6.0
 
 # Logging and utilities
 python-dotenv>=0.20.0
+
+gunicorn==21.2.0

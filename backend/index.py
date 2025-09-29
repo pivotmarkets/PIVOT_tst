@@ -862,4 +862,5 @@ class EnhancedPredictionAPI:
 
 if __name__ == "__main__":
     api_server = EnhancedPredictionAPI()
-    api_server.run(debug=True)
+    port = int(os.getenv("PORT", 8000))  # This is for Render
+    api_server.run(host='0.0.0.0', port=port, debug=False)
