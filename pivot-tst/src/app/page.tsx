@@ -674,7 +674,7 @@ export default function PivotMarketApp() {
             </div>
 
             {/* Hero Image - positioned at bottom right */}
-            <div className="absolute lg:-bottom-[146px] -bottom-[149px]  md:-bottom-[156px] -right-[130px]  lg:-right-[280px] w-full md:w-auto md:max-w-md lg:max-w-[39.5rem]">
+            <div className="absolute lg:-bottom-[246px] -bottom-[149px]  md:-bottom-[156px] -right-[130px]  lg:-right-[280px] w-full md:w-auto md:max-w-md lg:max-w-[49.5rem]">
               <img src="/hero.png" alt="Pivot Markets" className="w-full h-auto rounded-lg" />
             </div>
           </div>
