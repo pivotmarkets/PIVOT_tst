@@ -988,18 +988,22 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   <div className="absolute left-1/2 top-0 w-px h-full bg-slate-300/40 transform -translate-x-0.5" />
                 </div>
 
-                {/* Percentage Labels */}
-                <div className="flex items-center justify-between mt-2">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 rounded-md bg-gradient-to-r from-emerald-300/80 to-emerald-400/80" />
-                    <span className="text-sm font-medium text-emerald-600">Yes {(yesPrice * 100).toFixed(1)}%</span>
-                  </div>
+              {/* Percentage Labels */}
+<div className="flex items-center justify-between mt-2">
+  <div className="flex items-center space-x-1.5 sm:space-x-2">
+    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-md bg-gradient-to-r from-emerald-300/80 to-emerald-400/80" />
+    <span className="text-xs sm:text-sm font-medium text-emerald-600">
+      Yes {(yesPrice * 100).toFixed(1)}%
+    </span>
+  </div>
 
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm font-medium text-rose-600">No {(noPrice * 100).toFixed(1)}%</span>
-                    <div className="w-3 h-3 rounded-md bg-gradient-to-l from-rose-300/80 to-rose-400/80" />
-                  </div>
-                </div>
+  <div className="flex items-center space-x-1.5 sm:space-x-2">
+    <span className="text-xs sm:text-sm font-medium text-rose-600">
+      No {(noPrice * 100).toFixed(1)}%
+    </span>
+    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-md bg-gradient-to-l from-rose-300/80 to-rose-400/80" />
+  </div>
+</div>
               </div>
             </div>
 
