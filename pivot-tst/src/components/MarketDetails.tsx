@@ -705,6 +705,20 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const isOverBalance = currentAmount > balance;
   const sliderValue = Math.min(currentAmount, balance);
 
+  const calculateProgress = () => {
+    const now = new Date();
+    const created = new Date(marketDetails.creationTime);
+    const end = new Date(marketDetails.endTime);
+
+    if (marketDetails.resolved) return 100;
+    if (now >= end) return 75;
+    if (now < created) return 0;
+
+    const total = end.getTime() - created.getTime();
+    const elapsed = now.getTime() - created.getTime();
+    return Math.min((elapsed / total) * 33.33, 33.33); // First phase is 33.33%
+  };
+
   // Custom Tooltip component
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
@@ -1053,7 +1067,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                       setSide(null as any);
                       setAmountUSDC("");
                     }}
-                    className="w-8 h-8 flex items-center justify-center bg-[#3a3d4a] rounded-md text-xl hover:bg-[#2d2f37]"
+                    className="w-6 h-6 flex items-center justify-center bg-[#3a3d4a] rounded-md text-xl hover:bg-[#2d2f37]"
                   >
                     ×
                   </button>
@@ -1279,7 +1293,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
         {/* Overview Tab */}
         {activeTab === "overview" && (
-          <div className="space-y-4 sm:space-y-6">
+          <div className="space-y-4 sm:space-y-6 max-w-7xl mx-auto">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
               <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
                 <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
@@ -1359,6 +1373,103 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   }
                   return part;
                 })}
+              </div>
+            </div>
+
+            <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
+              {/* Horizontal Progress Bar */}
+              <div className="mb-8 mx-4 mt-6">
+                <div className="relative h-1 bg-gray-700 rounded-full">
+                  <div
+                    className="absolute top-0 left-0 h-full bg-[#008259] transition-all duration-500 ease-out rounded-full"
+                    style={{ width: `${calculateProgress()}%` }}
+                  ></div>
+                  {/* Progress Ball */}
+                  <div
+                    className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-[#008259] rounded-full transition-all duration-500 ease-out shadow-lg"
+                    style={{ left: `calc(${calculateProgress()}% - 6px)` }}
+                  ></div>
+                </div>
+              </div>
+
+              <div className="relative pl-8">
+                {/* Vertical Line - Full height */}
+                <div className="absolute left-[24px] h-[82%] top-0 bottom-0 w-[3px] bg-gray-700"></div>
+
+                {/* Progress Indicator - Dynamic height */}
+                <div
+                  className="absolute left-[24px] top-0 h-[82%] w-[3px] bg-[#008259] transition-all duration-500 ease-out"
+                  style={{
+                    height: marketDetails.resolved
+                      ? "82%"
+                      : new Date() >= new Date(marketDetails.endTime)
+                        ? "66.66%"
+                        : new Date() >= new Date(marketDetails.creationTime)
+                          ? "33.33%"
+                          : "0%",
+                  }}
+                ></div>
+
+                <div className="space-y-8">
+                  {/* Market Created */}
+                  <div className="flex items-start gap-4 relative">
+                    <div className="w-6 h-6 rounded-full bg-[#008259] border-4 border-[#2f2f33] flex-shrink-0 z-10 -ml-[19px]"></div>
+                    <div className="flex-1 pt-1">
+                      <h4 className="text-base sm:text-lg font-semibold text-white mb-1">Market Created</h4>
+                      <p className="text-sm sm:text-base text-slate-400">{formatDate(marketDetails.creationTime)}</p>
+                    </div>
+                  </div>
+
+                  {/* Market End */}
+                  <div className="flex items-start gap-4 relative">
+                    <div
+                      className={`w-6 h-6 rounded-full ${
+                        Date.now() >= parseInt(marketDetails.endTime) * 1000 ? "bg-[#008259]" : "bg-gray-600"
+                      } border-4 border-[#2f2f33] flex-shrink-0 z-10 -ml-[19px]`}
+                    ></div>
+                    <div className="flex-1 pt-1">
+                      <h4 className="text-base sm:text-lg font-semibold text-white mb-1">Market End</h4>
+                      <p className="text-sm sm:text-base text-slate-400">{formatDate(marketDetails.endTime)}</p>
+                      {new Date().getTime() < new Date(marketDetails.endTime).getTime() && (
+                        <p className="text-xs sm:text-sm text-slate-500 mt-1">Trading closes at this time</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Market Resolved */}
+                  <div className="flex items-start gap-4 relative">
+                    <div
+                      className={`w-6 h-6 rounded-full ${marketDetails.resolved ? "bg-[#008259]" : "bg-gray-600"} border-4 border-[#2f2f33] flex-shrink-0 z-10 -ml-[19px]`}
+                    ></div>
+                    <div className="flex-1 pt-1">
+                      <h4 className="text-base sm:text-lg font-semibold text-white mb-1">Market Resolved</h4>
+                      {marketDetails.resolved ? (
+                        <p className="text-sm sm:text-base text-slate-400">
+                          {marketDetails.endTime
+                            ? formatDate(marketDetails.endTime)
+                            : formatDate(marketDetails.endTime)}
+                        </p>
+                      ) : (
+                        <p className="text-sm sm:text-base text-slate-500">Awaiting resolution</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Claim Tokens */}
+                  <div className="flex items-start gap-4 relative">
+                    <div
+                      className={`w-6 h-6 rounded-full ${marketDetails.resolved ? "bg-[#008259]" : "bg-gray-600"} border-4 border-[#2f2f33] flex-shrink-0 z-10 -ml-[19px]`}
+                    ></div>
+                    <div className="flex-1 pt-1">
+                      <h4 className="text-base sm:text-lg font-semibold text-white mb-1">Claim Tokens</h4>
+                      {marketDetails.resolved ? (
+                        <p className="text-sm sm:text-base text-[#008259] font-medium">Available to claim</p>
+                      ) : (
+                        <p className="text-sm sm:text-base text-slate-500">Claim after resolution</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

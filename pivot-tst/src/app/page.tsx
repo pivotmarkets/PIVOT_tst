@@ -229,7 +229,6 @@ const MarketCard = ({ market }: any) => {
   const handleMarketClick = () => {
     // Prevent navigation if user is not signed in
     if (!account?.address) {
-
       toast.error("Please sign in to view market details", {
         style: {
           backgroundColor: "#7f1d1d",
@@ -248,18 +247,18 @@ const MarketCard = ({ market }: any) => {
       .replace(/[^\w\s-]/g, "")
       .replace(/\s+/g, "-")
       .trim();
-  
+
     router.push(`/market/${slug}/${market.id}`);
   };
 
   return (
-   <div
-  className={`bg-[#2f2f33] border border-gray-700/30 rounded-2xl p-6 hover:border-[#66666765] transition-all duration-300 h-full flex flex-col ${
-    account?.address ? 'cursor-pointer group' : 'cursor-auto'
-  }`}
-  onClick={handleMarketClick}
-  title={!account?.address ? "Sign in to view market" : ""}
->
+    <div
+      className={`bg-[#2f2f33] border border-gray-700/30 rounded-2xl p-6 hover:border-[#66666765] transition-all duration-300 h-full flex flex-col ${
+        account?.address ? "cursor-pointer group" : "cursor-auto"
+      }`}
+      onClick={handleMarketClick}
+      title={!account?.address ? "Sign in to view market" : ""}
+    >
       {/* Header with title and arc meter */}
       <div className="flex items-start justify-between mb-6">
         <div className="flex-1 pr-4">
@@ -818,45 +817,52 @@ export default function PivotMarketApp() {
 
         {/* Markets Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredMarkets.map((rawMarket: any) => {
-            const currentTime = Date.now() / 1000; // current epoch time
-            const endTime = parseInt(rawMarket.endTime);
+          {filteredMarkets
+            .map((rawMarket: any) => {
+              const currentTime = Date.now() / 1000; // current epoch time
+              const endTime = parseInt(rawMarket.endTime);
 
-            let status: "Live" | "Closed" | "Resolved";
-            if (rawMarket.resolved) {
-              status = "Resolved";
-            } else if (currentTime >= endTime) {
-              status = "Closed";
-            } else {
-              status = "Live";
-            }
+              let status: "Live" | "Closed" | "Resolved";
+              if (rawMarket.resolved) {
+                status = "Resolved";
+              } else if (currentTime >= endTime) {
+                status = "Closed";
+              } else {
+                status = "Live";
+              }
 
-            const transformedMarket = {
-              ...rawMarket,
-              yesPrice: parseFloat(rawMarket.yesPrice) / 10000,
-              noPrice: parseFloat(rawMarket.noPrice) / 10000,
-              volume: (parseFloat(rawMarket.totalValueLocked) / 1000000).toLocaleString("en-US", {
-                style: "currency",
-                currency: "USD",
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              }),
-              participants: parseInt(rawMarket.participantCount),
-              confidence: 0.5,
-              trend: "up",
-              minBet: "",
-              maxBet: "",
-              type: "",
-              timeLeft: getTimeLeft(rawMarket.endTime),
-              status,
-            };
+              const transformedMarket = {
+                ...rawMarket,
+                yesPrice: parseFloat(rawMarket.yesPrice) / 10000,
+                noPrice: parseFloat(rawMarket.noPrice) / 10000,
+                volume: (parseFloat(rawMarket.totalValueLocked) / 1000000).toLocaleString("en-US", {
+                  style: "currency",
+                  currency: "USD",
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                }),
+                participants: parseInt(rawMarket.participantCount),
+                confidence: 0.5,
+                trend: "up",
+                minBet: "",
+                maxBet: "",
+                type: "",
+                timeLeft: getTimeLeft(rawMarket.endTime),
+                status,
+              };
 
-            return (
-              <div key={rawMarket.id} className="">
+              return transformedMarket;
+            })
+            .sort((a, b) => {
+              // Sort priority: Live > Closed > Resolved
+              const statusPriority: any = { Live: 0, Closed: 1, Resolved: 2 };
+              return statusPriority[a.status] - statusPriority[b.status];
+            })
+            .map((transformedMarket) => (
+              <div key={transformedMarket.id} className="">
                 <MarketCard market={transformedMarket} onPredict={handlePredictMarket} />
               </div>
-            );
-          })}
+            ))}
         </div>
 
         {markets && filteredMarkets.length === 0 && (
