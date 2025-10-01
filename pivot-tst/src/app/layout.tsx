@@ -5,7 +5,7 @@ import { ReactQueryProvider } from "@/components/ReactQueryProvider";
 import { WalletProvider } from "@/components/WalletProvider";
 import { Toaster } from "sonner";
 import { WrongNetworkAlert } from "@/components/WrongNetworkAlert";
-
+import { Analytics } from "@vercel/analytics/next"
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -26,6 +26,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
+      <Analytics/>
       <Toaster />
       <body className="bg-[#1a1a1e57] text-white min-h-screen flex flex-col">
         <WalletProvider>
