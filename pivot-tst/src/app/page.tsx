@@ -343,7 +343,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
         // Create messages for each news item, focusing on summary and timestamp
         const insightMessages = response.trending_news.map((item: NewsItem) => ({
           type: "insight" as const,
-          content: `BREAKING: ${item.summary} (Posted: ${item.timestamp})`,
+          content: `${item.summary} (Posted: ${item.timestamp})`,
           data: {
             summary: item.summary,
             timestamp: item.timestamp,
@@ -379,10 +379,19 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
       style={{ animationDelay: `5s` }}
     >
       <div className="flex items-center justify-between p-4 border-b border-[#2f2f33]/20">
+        <div className="relative group">
         <div className="flex items-center gap-2">
           <ScanEyeIcon className="w-5 h-5 text-[#008259]" />
           <h3 className="text-white font-medium">Trending Topics</h3>
           {api.sessionId && <span className="text-xs text-[#008259]">●</span>}
+
+          <div className="absolute left-0 top-full mt-2 w-64 bg-gray-800 text-white text-sm rounded-lg p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 shadow-lg">
+            <p className="leading-relaxed">
+              Track real-time social trends to identify opportunities before they peak
+            </p>
+            <div className="absolute -top-2 left-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-gray-800"></div>
+          </div>
+          </div>
         </div>
         <button
           onClick={onClose}

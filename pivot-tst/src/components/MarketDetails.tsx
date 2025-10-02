@@ -28,6 +28,7 @@ import {
   getUserPositionDetails,
   TradeRecord,
 } from "@/app/view-functions/markets";
+import { formatDistanceToNow } from "date-fns";
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 import { WalletSelector } from "./WalletSelector";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
@@ -315,8 +316,6 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
       const positions: any = await getUserPositionDetails(market.id, account.address.toString());
       setUserPositions(positions || []);
-
-      console.log("Buy position response:", response);
       return response;
     } catch (error) {
       console.error("Error buying position:", error);
@@ -1721,9 +1720,15 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
                       const isYesTrade = parseFloat(trade.yesPriceAfter) > parseFloat(trade.yesPriceBefore);
                       const isSelling = action === "Sold";
-                      const actualSide = isSelling ? (isYesTrade ? "No" : "Yes") : isYesTrade ? "Yes" : "No";
+         
                       const isClaimOrResolve = action === "Added Liquidity" || action === "Resolved";
+  
                       const isClaim = action === "Claimed Winnings";
+                      const actualSide = isClaim 
+                        ? marketResolution  // Use resolved winning side for claims
+                        : isSelling 
+                          ? (isYesTrade ? "No" : "Yes") 
+                          : (isYesTrade ? "Yes" : "No");
 
                       return (
                         <div
@@ -1793,7 +1798,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
                               {/* Date - smaller on mobile */}
                               <div className="text-xs sm:text-sm text-slate-500 mt-0.5 sm:mt-0">
-                                {formatDate(trade.timestamp)}
+                              {formatDistanceToNow(new Date(trade.timestamp * 1000), { addSuffix: true })}
                               </div>
                             </div>
                           </div>

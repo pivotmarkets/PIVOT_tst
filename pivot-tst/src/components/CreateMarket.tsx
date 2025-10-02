@@ -135,15 +135,15 @@ const CreateMarket = () => {
 
   const handleLiquidityChange = (e: { target: { value: any } }) => {
     let value = e.target.value;
-    
+
     // Auto-limit to max balance if exceeded
     if (value && parseFloat(value) > balance) {
-      value = Math.max(2, balance - 0.05).toFixed(2); 
+      value = Math.max(2, balance - 0.05).toFixed(2);
       setInitialLiquidity(value);
     } else {
       setInitialLiquidity(value);
     }
-  
+
     if (value && parseFloat(value) < 2) {
       setError("Min 2 USDC");
     } else if (value && parseFloat(value) > balance) {
@@ -482,15 +482,20 @@ const CreateMarket = () => {
 
   const parseDate = (dateStr: string): string => {
     if (!dateStr) return "";
-
-    // Handle DD/MM/YYYY format
-    if (dateStr.includes("/")) {
-      const [day, month, year] = dateStr.split("/");
-      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  
+    try {
+      const [datePart] = dateStr.split(" ");
+      if (datePart.includes("/")) {
+        const [day, month, year] = datePart.split("/");
+        const formattedMonth = String(month).padStart(2, "0");
+        const formattedDay = String(day).padStart(2, "0");
+        return `${year}-${formattedMonth}-${formattedDay}`;
+      }
+      const date = new Date(datePart);
+      return date.toISOString().split("T")[0];
+    } catch (error) {
+      return "";
     }
-
-    // If already in YYYY-MM-DD format, return as is
-    return dateStr;
   };
 
   const formatDateForDisplay = (dateStr: string): string => {
@@ -842,7 +847,7 @@ const CreateMarket = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <div className="bg-[#232328] backdrop-blur-sm border border-gray-600/40 rounded-2xl p-6 shadow-lg">
+            <div className="bg-[#232328] backdrop-blur-sm border border-gray-600/40 rounded-2xl p-4 shadow-lg">
               <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
                 <BarChart3 className="w-5 h-5" />
                 Suggested markets:
@@ -1037,6 +1042,7 @@ const CreateMarket = () => {
                             : ""
                       }
                       onChange={(e) => {
+                        // Your existing onChange logic remains unchanged
                         const existingDateTime = marketProposal?.end_date;
                         let timePortion = "21:18"; // default time
 
@@ -1068,7 +1074,8 @@ const CreateMarket = () => {
 
                         {/* Tooltip */}
                         <div className="absolute -left-20 lg:left-0 top-6 bg-gray-900 border border-gray-600 rounded-lg p-3 text-xs text-gray-200 w-64 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                          More liquidity = better trading experience and higher potential creator earnings. Your contribution will be split 50/50 between YES and NO pools.
+                          More liquidity = better trading experience and higher potential creator earnings. Your
+                          contribution will be split 50/50 between YES and NO pools.
                         </div>
                       </div>
                     </h4>
