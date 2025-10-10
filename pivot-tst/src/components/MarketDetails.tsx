@@ -98,10 +98,9 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
   useEffect(() => {
     const fetchMarketData = async () => {
-      if (!market?.id || !account?.address) return;
-
+      if (!market?.id) return;
       setLoading(true);
-
+  
       try {
         // 1. Fetch market details
         const marketDetails = await getMarketDetails(market.id);
@@ -110,43 +109,48 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
           setMarketDetails(marketDetails as any);
           console.log("marketDetails:", marketDetails);
         }
-
-        // 2. Fetch user positions if wallet connected
-        const positions: any = await getUserPositionDetails(market.id, account.address.toString());
-
-        console.log("User positions:", positions);
-        setUserPositions(positions || []);
+        // 2. Only fetch user positions if wallet is connected
+        if (account?.address) {
+          const positions: any = await getUserPositionDetails(market.id, account.address.toString());
+          console.log("User positions:", positions);
+          setUserPositions(positions || []);
+        } else {
+          // Clear positions when wallet disconnects
+          setUserPositions([]);
+        }
       } catch (error) {
         console.error("Error fetching market data:", error);
       } finally {
-        setLoading(false);
+        setLoading(false); 
       }
     };
-
+  
     fetchMarketData();
   }, [market?.id, account?.address]);
 
   useEffect(() => {
     const refetchMissingData = async () => {
-      if (!market?.id || !account?.address) return;
-
-      // Check if critical data is missing
+      if (!market?.id) return;
+  
+      // Check if critical market data is missing
       const isMarketDetailsMissing =
         !marketDetails ||
         marketDetails.yesPrice === undefined ||
         marketDetails.noPrice === undefined ||
         marketDetails.totalYesShares === undefined ||
         marketDetails.totalNoShares === undefined;
-
-      const isUserPositionsMissing = userPositions === null || userPositions === undefined;
-
+  
+      // Only check user positions if wallet is connected
+      const isUserPositionsMissing = account?.address && (userPositions === null || userPositions === undefined);
+  
       if (isMarketDetailsMissing || isUserPositionsMissing) {
         console.log("Missing data detected, refetching...", {
           isMarketDetailsMissing,
           isUserPositionsMissing,
         });
-
+  
         try {
+          // Always refetch market details if missing (doesn't require wallet)
           if (isMarketDetailsMissing) {
             const marketDetails = await getMarketDetails(market.id);
             fetchPriceHistory();
@@ -154,8 +158,9 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
               setMarketDetails(marketDetails as any);
             }
           }
-
-          if (isUserPositionsMissing) {
+  
+          // Only refetch user positions if wallet is connected AND data is missing
+          if (isUserPositionsMissing && account?.address) {
             const positions: any = await getUserPositionDetails(market.id, account.address.toString());
             setUserPositions(positions || []);
           }
@@ -164,13 +169,10 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         }
       }
     };
-
-    // Only run if we have the required dependencies
-    if (market?.id && account?.address) {
+    if (market?.id) {
       refetchMissingData();
     }
   }, [marketDetails, userPositions, market?.id, account?.address]);
-
   // helper
   const calculatePayout = (betSide: string, amount: number) => {
     if (!betSide || !amount || amount <= 0) return 0;
@@ -831,8 +833,12 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   {marketDetails.resolved ? (
                     <>
                       <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
-                      <span className="">Resolved </span>
-                      {resolutionOutcome}
+
+                      {/* Format and show the date */}
+                      {new Date(parseFloat(marketDetails.endTime) * 1000).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}
                     </>
                   ) : (
                     <>
@@ -846,18 +852,30 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
             {/* Current probability display */}
             <div className="flex items-center gap-4 mb-6">
-              <div className="flex items-baseline gap-2">
-                <span
-                  className={`text-4xl md:text-5xl font-bold ${yesPrice > noPrice ? "text-green-400" : "text-red-400"}`}
-                >
-                  {yesPrice > noPrice ? (yesPrice * 100).toFixed(1) : (noPrice * 100).toFixed(1)}%
-                </span>
-                <span className="text-gray-400 text-lg">chance</span>
+              {/* If market is resolved, show the outcome */}
+              {marketDetails.resolved ? (
+                <div className="flex items-baseline gap-2">
+                  <span className="text-gray-400 text-lg">Resolved</span>
+                  <span
+                    className={`text-4xl font-bold ${resolutionOutcome === "YES" ? "text-green-400" : "text-red-400"}`}
+                  >
+                    {getResolutionOutcome(marketDetails.outcome)}
+                  </span>
+                </div>
+              ) : (
+                // Otherwise, show current probability and price change
+                <div className="flex items-baseline gap-2">
+                  <span
+                    className={`text-4xl md:text-5xl font-bold ${
+                      yesPrice > noPrice ? "text-green-400" : "text-red-400"
+                    }`}
+                  >
+                    {yesPrice > noPrice ? (yesPrice * 100).toFixed(1) : (noPrice * 100).toFixed(1)}%
+                  </span>
+                  <span className="text-gray-400 text-lg">chance</span>
 
-                {/* Price change indicator */}
-                <div className="flex items-baseline gap-1 text-sm">
-                  {/* You can add price change calculation here */}
-                  <span className="text-red-400">
+                  {/* Price change indicator */}
+                  <div className="flex items-baseline gap-1 text-sm">
                     {latestTrades &&
                       Array.isArray(latestTrades) &&
                       latestTrades.length > 0 &&
@@ -877,9 +895,9 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                           </div>
                         ) : null;
                       })()}
-                  </span>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -987,22 +1005,22 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   <div className="absolute left-1/2 top-0 w-px h-full bg-slate-300/40 transform -translate-x-0.5" />
                 </div>
 
-              {/* Percentage Labels */}
-<div className="flex items-center justify-between mt-2">
-  <div className="flex items-center space-x-1.5 sm:space-x-2">
-    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-md bg-gradient-to-r from-emerald-300/80 to-emerald-400/80" />
-    <span className="text-xs sm:text-sm font-medium text-emerald-600">
-      Yes {(yesPrice * 100).toFixed(1)}%
-    </span>
-  </div>
+                {/* Percentage Labels */}
+                <div className="flex items-center justify-between mt-2">
+                  <div className="flex items-center space-x-1.5 sm:space-x-2">
+                    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-md bg-gradient-to-r from-emerald-300/80 to-emerald-400/80" />
+                    <span className="text-xs sm:text-sm font-medium text-emerald-600">
+                      Yes {(yesPrice * 100).toFixed(1)}%
+                    </span>
+                  </div>
 
-  <div className="flex items-center space-x-1.5 sm:space-x-2">
-    <span className="text-xs sm:text-sm font-medium text-rose-600">
-      No {(noPrice * 100).toFixed(1)}%
-    </span>
-    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-md bg-gradient-to-l from-rose-300/80 to-rose-400/80" />
-  </div>
-</div>
+                  <div className="flex items-center space-x-1.5 sm:space-x-2">
+                    <span className="text-xs sm:text-sm font-medium text-rose-600">
+                      No {(noPrice * 100).toFixed(1)}%
+                    </span>
+                    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-md bg-gradient-to-l from-rose-300/80 to-rose-400/80" />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1485,8 +1503,8 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
               <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-8 text-center">
                 <div className="text-gray-400 mb-4">
                   <Wallet className="w-12 h-12 mx-auto mb-4" />
-                  <h3 className="lg:text-lg text-base font-semibold mb-2">Connect Your Wallet</h3>
-                  <p className="text-sm">Connect your wallet to view your positions in this market.</p>
+                  <h3 className="lg:text-lg text-base font-semibold mb-2">Sign In Required</h3>
+                  <p className="text-sm">You need to sign in to view your positions in this market.</p>
                 </div>
               </div>
             ) : userPositions.length === 0 ? (
@@ -1611,7 +1629,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                                 ) : (
                                   <>
                                     <Minus className="w-4 h-4" />
-                                    Sell All
+                                    Sell
                                   </>
                                 )}
                               </button>
@@ -1707,7 +1725,21 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   <p>No recent trading activity</p>
                 </div>
               ) : (
-                <div className="space-y-2 sm:space-y-3 max-h-96 overflow-y-auto">
+                <div
+                  className="space-y-2 sm:space-y-3 max-h-96 overflow-y-auto"
+                  style={{
+                    scrollbarWidth: "none",
+                    msOverflowStyle: "none",
+                  }}
+                >
+                  <style>
+                    {`
+                      /* Chrome, Safari and Edge */
+                      div::-webkit-scrollbar {
+                        display: none;
+                      }
+                    `}
+                  </style>
                   {latestTrades &&
                     Array.isArray(latestTrades) &&
                     latestTrades.slice(0, 20).map((trade, index) => {
@@ -1720,15 +1752,19 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
                       const isYesTrade = parseFloat(trade.yesPriceAfter) > parseFloat(trade.yesPriceBefore);
                       const isSelling = action === "Sold";
-         
+
                       const isClaimOrResolve = action === "Added Liquidity" || action === "Resolved";
-  
+
                       const isClaim = action === "Claimed Winnings";
-                      const actualSide = isClaim 
-                        ? marketResolution  // Use resolved winning side for claims
-                        : isSelling 
-                          ? (isYesTrade ? "No" : "Yes") 
-                          : (isYesTrade ? "Yes" : "No");
+                      const actualSide = isClaim
+                        ? marketResolution // Use resolved winning side for claims
+                        : isSelling
+                          ? isYesTrade
+                            ? "No"
+                            : "Yes"
+                          : isYesTrade
+                            ? "Yes"
+                            : "No";
 
                       return (
                         <div
@@ -1798,7 +1834,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
                               {/* Date - smaller on mobile */}
                               <div className="text-xs sm:text-sm text-slate-500 mt-0.5 sm:mt-0">
-                              {formatDistanceToNow(new Date(trade.timestamp * 1000), { addSuffix: true })}
+                                {formatDistanceToNow(new Date(trade.timestamp * 1000), { addSuffix: true })}
                               </div>
                             </div>
                           </div>

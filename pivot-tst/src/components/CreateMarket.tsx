@@ -482,7 +482,7 @@ const CreateMarket = () => {
 
   const parseDate = (dateStr: string): string => {
     if (!dateStr) return "";
-  
+
     try {
       const [datePart] = dateStr.split(" ");
       if (datePart.includes("/")) {

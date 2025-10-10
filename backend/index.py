@@ -404,7 +404,7 @@ Return ONLY a JSON array with these fields for each suggestion:
             reddit_categories = []
             if categories:
                 for cat in categories:
-                    if cat.lower() in ['cryptocurrency', 'crypto', 'bitcoin']:
+                    if cat.lower() in ['cryptocurrency', 'crypto', 'bitcoin', 'aptos']:
                         reddit_categories.append('crypto')
                     elif cat.lower() in ['technology', 'tech', 'programming']:
                         reddit_categories.append('tech')

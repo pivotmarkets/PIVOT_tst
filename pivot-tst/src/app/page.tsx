@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import {
   Clock,
   Users,
-  Target,
   ChevronDown,
   CandlestickChart,
   PlusCircle,
@@ -13,7 +12,7 @@ import {
   ScanEye,
   ScanEyeIcon,
 } from "lucide-react";
-import { toast } from "sonner";
+import { formatDistanceToNow } from "date-fns";
 import { WalletSelector } from "../components/WalletSelector";
 import { useRouter } from "next/navigation";
 
@@ -29,6 +28,7 @@ interface AIAssistantPanelProps {
 }
 
 interface NewsItem {
+  upvote_ratio: number;
   summary: string;
   timestamp: string;
   title: string;
@@ -228,19 +228,19 @@ const MarketCard = ({ market }: any) => {
 
   const handleMarketClick = () => {
     // Prevent navigation if user is not signed in
-    if (!account?.address) {
-      toast.error("Please sign in to view market details", {
-        style: {
-          backgroundColor: "#7f1d1d",
-          color: "#fca5a5",
-          fontWeight: "bold",
-          border: "1px solid #fca5a5",
-        },
-        duration: 6000,
-      });
-      // or use a toast notification instead
-      return;
-    }
+    // if (!account?.address) {
+    //   toast.error("Please sign in to view market details", {
+    //     style: {
+    //       backgroundColor: "#7f1d1d",
+    //       color: "#fca5a5",
+    //       fontWeight: "bold",
+    //       border: "1px solid #fca5a5",
+    //     },
+    //     duration: 6000,
+    //   });
+    //   // or use a toast notification instead
+    //   return;
+    // }
     // Create a URL-friendly slug from the market title
     const slug = market.title
       .toLowerCase()
@@ -257,7 +257,7 @@ const MarketCard = ({ market }: any) => {
         account?.address ? "cursor-pointer group" : "cursor-auto"
       }`}
       onClick={handleMarketClick}
-      title={!account?.address ? "Sign in to view market" : ""}
+      title={market.id.toString()}
     >
       {/* Header with title and arc meter */}
       <div className="flex items-start justify-between mb-6">
@@ -335,24 +335,28 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
   const loadInitialInsights = async () => {
     try {
       setIsLoading(true);
-      const response = await api.getTrendingNews(["politics", "crypto", "technology", "economics"], 20);
+      const response = await api.getTrendingNews(["sports", "crypto", "technology", "economics"], 20);
 
       if (response.success && response.trending_news) {
         setInsights(response.trending_news);
 
-        // Create messages for each news item, focusing on summary and timestamp
+        // Create messages with full metadata
         const insightMessages = response.trending_news.map((item: NewsItem) => ({
           type: "insight" as const,
-          content: `${item.summary} (Posted: ${item.timestamp})`,
+          content: `${item.summary}`,
           data: {
             summary: item.summary,
             timestamp: item.timestamp,
           },
-          timestamp: new Date(),
+          metadata: {
+            score: item.score,
+            upvote_ratio: item.real_data_context?.upvote_ratio || item.upvote_ratio,
+            num_comments: item.num_comments,
+          },
+          timestamp: formatDistanceToNow(new Date(item.timestamp)) as any,
         }));
 
-        // Combine intro message with individual news item messages
-        console.log("insights", insights);
+        console.log("insights", response);
         setMessages(insightMessages);
       } else {
         throw new Error("No trending news found in response");
@@ -380,17 +384,17 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
     >
       <div className="flex items-center justify-between p-4 border-b border-[#2f2f33]/20">
         <div className="relative group">
-        <div className="flex items-center gap-2">
-          <ScanEyeIcon className="w-5 h-5 text-[#008259]" />
-          <h3 className="text-white font-medium">Trending Topics</h3>
-          {api.sessionId && <span className="text-xs text-[#008259]">●</span>}
+          <div className="flex items-center gap-2">
+            <ScanEyeIcon className="w-5 h-5 text-[#008259]" />
+            <h3 className="text-white font-medium">Trending Topics</h3>
+            {api.sessionId && <span className="text-xs text-[#008259]">●</span>}
 
-          <div className="absolute left-0 top-full mt-2 w-64 bg-gray-800 text-white text-sm rounded-lg p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 shadow-lg">
-            <p className="leading-relaxed">
-              Track real-time social trends to identify opportunities before they peak
-            </p>
-            <div className="absolute -top-2 left-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-gray-800"></div>
-          </div>
+            <div className="absolute left-0 top-full mt-2 w-64 bg-gray-800 text-white text-sm rounded-lg p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 shadow-lg">
+              <p className="leading-relaxed">
+                Track real-time social trends to identify opportunities before they peak
+              </p>
+              <div className="absolute -top-2 left-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-gray-800"></div>
+            </div>
           </div>
         </div>
         <button
@@ -411,7 +415,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
           </div>
         )}
 
-        {messages.map((message, index) => (
+        {messages.map((message: any, index) => (
           <div key={index} className={`${message.type === "user" ? "ml-4" : "mr-4"}`}>
             <div
               className={`rounded-lg p-3 ${
@@ -446,7 +450,44 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
                 </div>
               )}
 
-              <div className="text-xs text-gray-400 mt-2">{message.timestamp.toLocaleTimeString()}</div>
+              {/* Metadata icons for insight messages */}
+              {message.type === "insight" && message.metadata && (
+                <div className="flex items-center justify-end gap-3 mt-2 text-xs text-[#008259]/70">
+                  {/* Score */}
+                  <div className="flex items-center gap-1" title="Score">
+                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" />
+                    </svg>
+                    <span>{message.metadata.score}</span>
+                  </div>
+
+                  {/* Upvote Ratio */}
+                  <div className="flex items-center gap-1" title="Upvote Ratio">
+                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <span>{(message.metadata.upvote_ratio * 100).toFixed(0)}%</span>
+                  </div>
+
+                  {/* Comments */}
+                  <div className="flex items-center gap-1" title="Comments">
+                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path
+                        fillRule="evenodd"
+                        d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <span>{message.metadata.num_comments}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="text-xs text-gray-400 mt-2">{message.timestamp}</div>
             </div>
           </div>
         ))}
@@ -917,13 +958,13 @@ export default function PivotMarketApp() {
         )}
 
         {/* Empty State */}
-        {account && markets && markets.length === 0 && (
+        {/* {account && markets && markets.length === 0 && (
           <div className="text-center py-12 animate-fadeInUp">
             <Target className="w-16 h-16 text-gray-600 mx-auto mb-4" />
             <h3 className="text-xl font-medium text-white mb-2">No markets found</h3>
             <p className="text-gray-400">Try adjusting your search or filter criteria</p>
           </div>
-        )}
+        )} */}
       </div>
 
       {/* AI Assistant Panel */}

@@ -746,62 +746,143 @@ module pivot_markets::y {
         let store = borrow_global_mut<MarketStore>(@pivot_markets);
         assert!(table::contains(&store.markets, market_id), error::not_found(E_MARKET_NOT_FOUND));
         let market = table::borrow_mut(&mut store.markets, market_id);
-
         let resolver_addr = signer::address_of(resolver);
+        
         assert!(
-            resolver_addr == store.admin || 
-            resolver_addr == market.oracle || 
-            resolver_addr == market.creator, 
+            resolver_addr == store.admin ||
+            resolver_addr == market.oracle ||
+            resolver_addr == market.creator,
             error::permission_denied(E_NOT_ADMIN)
         );
-
         assert!(!market.resolved, error::invalid_state(E_MARKET_RESOLVED));
         assert!(timestamp::now_seconds() >= market.end_time, error::invalid_state(E_MARKET_NOT_ENDED));
         assert!(outcome == 1 || outcome == 2, error::invalid_argument(E_INVALID_OUTCOME));
-
+        
         // Record prices before resolution
         let yes_price_before = calculate_outcome_price(market.amm_pool.yes_reserve, market.amm_pool.no_reserve, 1);
         let no_price_before = calculate_outcome_price(market.amm_pool.yes_reserve, market.amm_pool.no_reserve, 2);
-
-        let total_pool_value = fungible_asset::balance(market.yes_pool) + fungible_asset::balance(market.no_pool);
+        
+        // Determine winning and losing pools
+        let (winning_pool, winning_pool_extend_ref, losing_pool, losing_pool_extend_ref) = 
+            if (outcome == 1) {
+                (market.yes_pool, &market.yes_pool_extend_ref, market.no_pool, &market.no_pool_extend_ref)
+            } else {
+                (market.no_pool, &market.no_pool_extend_ref, market.yes_pool, &market.yes_pool_extend_ref)
+            };
+        
+        let winning_pool_balance = fungible_asset::balance(winning_pool);
+        let losing_pool_balance = fungible_asset::balance(losing_pool);
+        let total_pool_value = winning_pool_balance + losing_pool_balance;
+        
+        // Calculate fees from total pool value
         let platform_fee_amount = (total_pool_value * store.platform_fee_rate) / 10000;
         let creator_fee_amount = (market.analytics.total_fees * store.creator_fee_rate) / PRICE_PRECISION;
+        
+        // Calculate total fees
+        let total_fees = platform_fee_amount + creator_fee_amount;
+        
+        // LP return comes from winning pool
         let lp_return = market.amm_pool.total_lp_tokens;
-
-        let losing_pool = if (outcome == 1) market.no_pool else market.yes_pool;
-        let losing_pool_extend_ref = if (outcome == 1) &market.no_pool_extend_ref else &market.yes_pool_extend_ref;
-        let losing_pool_balance = fungible_asset::balance(losing_pool);
-
-        // Assume sufficient balance in losing pool
-        assert!(losing_pool_balance >= platform_fee_amount + creator_fee_amount + lp_return, error::invalid_state(E_INSUFFICIENT_POOL_BALANCE));
-
-        let pool_signer = object::generate_signer_for_extending(losing_pool_extend_ref);
-
+        
+        // Check if losing pool has enough for fees
+        // If not, take what's available and get the rest from winning pool
+        let fees_from_losing_pool = if (losing_pool_balance >= total_fees) {
+            total_fees
+        } else {
+            losing_pool_balance
+        };
+        
+        let fees_from_winning_pool = total_fees - fees_from_losing_pool;
+        
+        // Check if winning pool has enough for LP returns + additional fees
+        assert!(
+            winning_pool_balance >= lp_return + fees_from_winning_pool, 
+            error::invalid_state(E_INSUFFICIENT_POOL_BALANCE)
+        );
+        
+        // Withdraw fees from losing pool (if any balance exists)
+        let losing_pool_signer = object::generate_signer_for_extending(losing_pool_extend_ref);
+        let winning_pool_signer = object::generate_signer_for_extending(winning_pool_extend_ref);
+        
+        // Distribute platform fee
         if (platform_fee_amount > 0) {
-            let platform_fee = dispatchable_fungible_asset::withdraw(&pool_signer, losing_pool, platform_fee_amount);
-            dispatchable_fungible_asset::deposit(primary_fungible_store::primary_store(store.admin, market.asset_metadata), platform_fee);
+            let platform_fee_from_losing = (fees_from_losing_pool * platform_fee_amount) / total_fees;
+            let platform_fee_from_winning = platform_fee_amount - platform_fee_from_losing;
+            
+            if (platform_fee_from_losing > 0) {
+                let platform_fee_1 = dispatchable_fungible_asset::withdraw(
+                    &losing_pool_signer, 
+                    losing_pool, 
+                    platform_fee_from_losing
+                );
+                dispatchable_fungible_asset::deposit(
+                    primary_fungible_store::primary_store(store.admin, market.asset_metadata), 
+                    platform_fee_1
+                );
+            };
+            
+            if (platform_fee_from_winning > 0) {
+                let platform_fee_2 = dispatchable_fungible_asset::withdraw(
+                    &winning_pool_signer, 
+                    winning_pool, 
+                    platform_fee_from_winning
+                );
+                dispatchable_fungible_asset::deposit(
+                    primary_fungible_store::primary_store(store.admin, market.asset_metadata), 
+                    platform_fee_2
+                );
+            };
         };
-
+        
+        // Distribute creator fee
         if (creator_fee_amount > 0) {
-            let creator_fee = dispatchable_fungible_asset::withdraw(&pool_signer, losing_pool, creator_fee_amount);
-            dispatchable_fungible_asset::deposit(primary_fungible_store::primary_store(market.creator, market.asset_metadata), creator_fee);
+            let creator_fee_from_losing = (fees_from_losing_pool * creator_fee_amount) / total_fees;
+            let creator_fee_from_winning = creator_fee_amount - creator_fee_from_losing;
+            
+            if (creator_fee_from_losing > 0) {
+                let creator_fee_1 = dispatchable_fungible_asset::withdraw(
+                    &losing_pool_signer, 
+                    losing_pool, 
+                    creator_fee_from_losing
+                );
+                dispatchable_fungible_asset::deposit(
+                    primary_fungible_store::primary_store(market.creator, market.asset_metadata), 
+                    creator_fee_1
+                );
+            };
+            
+            if (creator_fee_from_winning > 0) {
+                let creator_fee_2 = dispatchable_fungible_asset::withdraw(
+                    &winning_pool_signer, 
+                    winning_pool, 
+                    creator_fee_from_winning
+                );
+                dispatchable_fungible_asset::deposit(
+                    primary_fungible_store::primary_store(market.creator, market.asset_metadata), 
+                    creator_fee_2
+                );
+            };
         };
-
-        // Create LP claim pool
+        
+        // Create LP claim pool and fund it from winning pool
         let constructor_ref = object::create_object(@pivot_markets);
         let lp_claim_store = fungible_asset::create_store(&constructor_ref, market.asset_metadata);
         let lp_claim_extend_ref = object::generate_extend_ref(&constructor_ref);
         market.lp_claim_pool = option::some(lp_claim_store);
         market.lp_claim_extend_ref = option::some(lp_claim_extend_ref);
-
+        
         if (lp_return > 0) {
-            let lp_return_fa = dispatchable_fungible_asset::withdraw(&pool_signer, losing_pool, lp_return);
+            let lp_return_fa = dispatchable_fungible_asset::withdraw(
+                &winning_pool_signer, 
+                winning_pool, 
+                lp_return
+            );
             dispatchable_fungible_asset::deposit(lp_claim_store, lp_return_fa);
         };
-
+        
         market.outcome = option::some(outcome);
         market.resolved = true;
-
+        
         // Record the resolution as a trade
         record_trade(
             market,
@@ -1147,7 +1228,6 @@ module pivot_markets::y {
     }
 
     // NEW ANALYTICS AND TRADE HISTORY VIEW FUNCTIONS
-
     #[view]
     public fun get_market_analytics(market_id: u64): (u64, u64, u64, u64, u64, u64, u64) acquires MarketStore {
         let store = borrow_global<MarketStore>(@pivot_markets);
