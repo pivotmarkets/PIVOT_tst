@@ -335,7 +335,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
   const loadInitialInsights = async () => {
     try {
       setIsLoading(true);
-      const response = await api.getTrendingNews(["sports", "crypto", "technology", "economics"], 20);
+      const response = await api.getTrendingNews(["economics", "sports", "technology", "crypto"], 20);
 
       if (response.success && response.trending_news) {
         setInsights(response.trending_news);
