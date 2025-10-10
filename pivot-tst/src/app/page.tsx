@@ -450,44 +450,51 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
                 </div>
               )}
 
-              {/* Metadata icons for insight messages */}
+              {/* Metadata and timestamp for insight messages */}
               {message.type === "insight" && message.metadata && (
-                <div className="flex items-center justify-end gap-3 mt-2 text-xs text-[#008259]/70">
-                  {/* Score */}
-                  <div className="flex items-center gap-1" title="Score">
-                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" />
-                    </svg>
-                    <span>{message.metadata.score}</span>
+                <div className="flex items-center justify-between mt-2 text-xs text-[#008259]/70">
+                  {/* Stats */}
+                  <div className="flex items-center gap-3">
+                    {/* Score */}
+                    <div className="flex items-center gap-1" title="Score">
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" />
+                      </svg>
+                      <span>{message.metadata.score}</span>
+                    </div>
+
+                    {/* Upvote Ratio */}
+                    <div className="flex items-center gap-1" title="Upvote Ratio">
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path
+                          fillRule="evenodd"
+                          d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      <span>{(message.metadata.upvote_ratio * 100).toFixed(0)}%</span>
+                    </div>
+
+                    {/* Comments */}
+                    <div className="flex items-center gap-1" title="Comments">
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      <span>{message.metadata.num_comments}</span>
+                    </div>
                   </div>
 
-                  {/* Upvote Ratio */}
-                  <div className="flex items-center gap-1" title="Upvote Ratio">
-                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path
-                        fillRule="evenodd"
-                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    <span>{(message.metadata.upvote_ratio * 100).toFixed(0)}%</span>
-                  </div>
-
-                  {/* Comments */}
-                  <div className="flex items-center gap-1" title="Comments">
-                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path
-                        fillRule="evenodd"
-                        d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    <span>{message.metadata.num_comments}</span>
-                  </div>
+                  {/* Timestamp */}
+                  <div className="text-gray-400">{message.timestamp}</div>
                 </div>
               )}
 
-              <div className="text-xs text-gray-400 mt-2">{message.timestamp}</div>
+              {/* Timestamp for non-insight messages */}
+              {message.type !== "insight" && <div className="text-xs text-gray-400 mt-2">{message.timestamp}</div>}
             </div>
           </div>
         ))}
