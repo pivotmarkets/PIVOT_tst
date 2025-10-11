@@ -531,7 +531,7 @@ const ProfilePage = () => {
               <span className="text-xs sm:text-sm font-semibold text-gray-200">0 Followers</span>
             </button>
             <button className="text-center px-2 py-1 sm:px-3 sm:py-2 hover:bg-gray-700 rounded-md transition-colors">
-              <span className="text-xs sm:text-sm font-semibold text-gray-200">0 Creator Earnings</span>
+              <span className="text-xs sm:text-sm font-semibold text-gray-200">10 Bronze Rank</span>
             </button>
           </div>
 
