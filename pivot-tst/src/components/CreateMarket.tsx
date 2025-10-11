@@ -12,6 +12,7 @@ import { createMarket } from "@/app/entry-functions/stake";
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 import { WalletSelector } from "./WalletSelector";
 import Link from "next/link";
+import MobileBottomNav from "./ui/MobileBottomNav";
 
 interface Message {
   role: "user" | "ai";
@@ -546,7 +547,7 @@ const CreateMarket = () => {
           </div>
         </div>
       </header>
-      <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto px-4 py-8 pb-22 lg:pb-0">
         {messages.length === 0 ? (
           /* Welcome State */
           <div className="text-center items-center space-y-8">
@@ -1284,6 +1285,7 @@ const CreateMarket = () => {
           )}
         </motion.div>
       </div>
+      <MobileBottomNav />
     </div>
   );
 };

@@ -37,6 +37,7 @@ import { aptosClient } from "@/utils/aptosClient";
 import { convertAmountFromHumanReadableToOnChain } from "@/utils/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import MobileBottomNav from "./ui/MobileBottomNav";
 
 // Types
 interface Position {
@@ -85,7 +86,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const [latestTrades, setLatestTrades] = useState<any>([]);
   const [marketAnalytics, setMarketAnalytics] = useState<any>(null);
   const [claimedPositions, setClaimedPositions] = useState<Set<string>>(new Set());
-
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "positions" | "activity">("overview");
   const USDC_ASSET_ADDRESS: string = "0x69091fbab5f7d635ee7ac5098cf0c1efbe31d68fec0f2cd565e8d168daf52832";
@@ -100,7 +101,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     const fetchMarketData = async () => {
       if (!market?.id) return;
       setLoading(true);
-  
+
       try {
         // 1. Fetch market details
         const marketDetails = await getMarketDetails(market.id);
@@ -121,17 +122,17 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       } catch (error) {
         console.error("Error fetching market data:", error);
       } finally {
-        setLoading(false); 
+        setLoading(false);
       }
     };
-  
+
     fetchMarketData();
   }, [market?.id, account?.address]);
 
   useEffect(() => {
     const refetchMissingData = async () => {
       if (!market?.id) return;
-  
+
       // Check if critical market data is missing
       const isMarketDetailsMissing =
         !marketDetails ||
@@ -139,16 +140,16 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         marketDetails.noPrice === undefined ||
         marketDetails.totalYesShares === undefined ||
         marketDetails.totalNoShares === undefined;
-  
+
       // Only check user positions if wallet is connected
       const isUserPositionsMissing = account?.address && (userPositions === null || userPositions === undefined);
-  
+
       if (isMarketDetailsMissing || isUserPositionsMissing) {
         console.log("Missing data detected, refetching...", {
           isMarketDetailsMissing,
           isUserPositionsMissing,
         });
-  
+
         try {
           // Always refetch market details if missing (doesn't require wallet)
           if (isMarketDetailsMissing) {
@@ -158,7 +159,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
               setMarketDetails(marketDetails as any);
             }
           }
-  
+
           // Only refetch user positions if wallet is connected AND data is missing
           if (isUserPositionsMissing && account?.address) {
             const positions: any = await getUserPositionDetails(market.id, account.address.toString());
@@ -366,7 +367,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       .sort((a, b) => a.timestamp - b.timestamp);
   };
 
-  const useUSDCBalance = () => {
+ const useUSDCBalance = () => {
     const { account } = useWallet();
     const [balance, setBalance] = useState<number>(0);
     const [loading, setLoading] = useState(false);
@@ -756,7 +757,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   }, 0);
 
   return (
-    <div className="min-h-screen bg-[#232328] ">
+    <div className="min-h-screen bg-[#232328] mb-16 lg:mb-0">
       <header className="bg-[#1a1a1e2c] sticky top-0 z-40 overflow-hidden animate-fadeInUp border-b border-b-[var(--Stroke-Dark,#2c2c2f)]">
         <div className="max-w-7xl mx-auto py-4 px-3 sm:px-0">
           <div className="flex items-center justify-between">
@@ -781,7 +782,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         </div>
       </header>
 
-      <div className="max-w-6xl px-3 sm:mx-auto mt-12 pb-16">
+      <div className="max-w-6xl px-3 sm:mx-auto mt-12 pb-16 lg:pb-8">
         {/* Market Info Card */}
         <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl mb-5 p-5 sm:p-6">
           {/* Market Header Section */}
@@ -984,50 +985,37 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
           {/* Current Dominating Price Indicator */}
           <div className="mt-4">
-            {/* Dominance Bar showing split between Yes and No */}
-            <div className="mt-4">
-              <div className="">
-                {/* Dominance Bar */}
-                <div className="relative h-4 bg-slate-100/70 rounded-md overflow-hidden">
-                  {/* Yes side (left) */}
-                  <div
-                    className="absolute left-0 top-0 h-full bg-gradient-to-r from-emerald-300/80 to-emerald-400/80 transition-all duration-500 ease-out"
-                    style={{ width: `${yesPrice * 100}%` }}
-                  />
-
-                  {/* No side (right) */}
-                  <div
-                    className="absolute right-0 top-0 h-full bg-gradient-to-l from-rose-300/80 to-rose-400/80 transition-all duration-500 ease-out"
-                    style={{ width: `${noPrice * 100}%` }}
-                  />
-
-                  {/* Center divider line */}
-                  <div className="absolute left-1/2 top-0 w-px h-full bg-slate-300/40 transform -translate-x-0.5" />
-                </div>
-
-                {/* Percentage Labels */}
-                <div className="flex items-center justify-between mt-2">
-                  <div className="flex items-center space-x-1.5 sm:space-x-2">
-                    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-md bg-gradient-to-r from-emerald-300/80 to-emerald-400/80" />
-                    <span className="text-xs sm:text-sm font-medium text-emerald-600">
-                      Yes {(yesPrice * 100).toFixed(1)}%
-                    </span>
-                  </div>
-
-                  <div className="flex items-center space-x-1.5 sm:space-x-2">
-                    <span className="text-xs sm:text-sm font-medium text-rose-600">
-                      No {(noPrice * 100).toFixed(1)}%
-                    </span>
-                    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-md bg-gradient-to-l from-rose-300/80 to-rose-400/80" />
-                  </div>
-                </div>
+            {/* Labels */}
+            <div className="flex justify-between text-sm mb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-md bg-gradient-to-r from-emerald-300/80 to-emerald-400/80" />
+                <span className="text-emerald-600 font-medium text-xs sm:text-sm">
+                  Yes {(yesPrice * 100).toFixed(1)}%
+                </span>
               </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-rose-600 font-medium text-xs sm:text-sm">No {(noPrice * 100).toFixed(1)}%</span>
+                <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-md bg-gradient-to-l from-rose-300/80 to-rose-400/80" />
+              </div>
+            </div>
+
+            {/* Dominance Bar */}
+            <div className="flex gap-1 h-2 rounded-full overflow-hidden mb-2">
+              <div
+                className="bg-gradient-to-r from-emerald-300/80 to-emerald-400/80 transition-all duration-500 ease-out"
+                style={{ width: `${yesPrice * 100}%` }}
+              />
+              <div
+                className="bg-gradient-to-l from-rose-300/80 to-rose-400/80 transition-all duration-500 ease-out"
+                style={{ width: `${noPrice * 100}%` }}
+              />
             </div>
 
             {/* Additional context */}
             <div className="mt-2 text-center">
-              <span className="text-gray-500 text-sm">
-                Market confidence: {Math.abs((yesPrice - noPrice) * 100).toFixed(1)}% spread
+              <span className="text-gray-500 text-xs">
+                market confidence: {Math.abs((yesPrice - noPrice) * 100).toFixed(1)}% spread
               </span>
             </div>
           </div>
@@ -1866,6 +1854,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
           </div>
         )}
       </div>
+      <MobileBottomNav />
     </div>
   );
 };

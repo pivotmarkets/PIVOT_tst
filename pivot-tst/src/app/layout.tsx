@@ -36,7 +36,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <div id="root">{children}</div>
             </div>
 
-            <footer className="bg-[#2f2f33] pt-6 border-t border-t-[var(--Stroke-Dark,#2c2c2f)]">
+            <footer className="hidden lg:flex bg-[#2f2f33] pt-6 border-t border-t-[var(--Stroke-Dark,#2c2c2f)]">
               <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
                 <div className="flex items-center justify-center mb-6">
                   <img src="./icons/footer-logo2.png" alt="Footer Logo" className="h-12 sm:h-14 w-auto" />
