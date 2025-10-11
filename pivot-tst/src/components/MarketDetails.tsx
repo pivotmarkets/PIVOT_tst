@@ -86,7 +86,6 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const [latestTrades, setLatestTrades] = useState<any>([]);
   const [marketAnalytics, setMarketAnalytics] = useState<any>(null);
   const [claimedPositions, setClaimedPositions] = useState<Set<string>>(new Set());
-  const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "positions" | "activity">("overview");
   const USDC_ASSET_ADDRESS: string = "0x69091fbab5f7d635ee7ac5098cf0c1efbe31d68fec0f2cd565e8d168daf52832";
