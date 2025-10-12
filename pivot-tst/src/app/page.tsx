@@ -12,6 +12,7 @@ import {
   ScanEye,
   ScanEyeIcon,
   LoaderCircle,
+  InfoIcon,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { WalletSelector } from "../components/WalletSelector";
@@ -22,6 +23,7 @@ import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import MarketDetailPage from "@/components/MarketDetails";
 import { PredictionMarketsResponse, QuickPredictionResponse } from "./serve";
 import MobileBottomNav from "@/components/ui/MobileBottomNav";
+import Link from "next/link";
 
 interface AIAssistantPanelProps {
   isVisible: boolean;
@@ -252,7 +254,7 @@ const MarketCard = ({ market }: any) => {
 
     router.push(`/market/${slug}/${market.id}`);
   };
-return (
+  return (
     <div
       className={`bg-[#2f2f33] border border-gray-700/30 rounded-2xl p-6 hover:border-[#66666765] transition-all duration-300 h-full flex flex-col ${
         account?.address ? "cursor-pointer group" : "cursor-auto"
@@ -305,7 +307,6 @@ return (
           {market.timeLeft || "30d left"}
         </span>
       </div>
-    
     </div>
   );
 };
@@ -326,6 +327,11 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
     }>
   >([]);
   const [insights, setInsights] = useState<NewsItem[]>([]);
+  const [isTooltipVisible, setIsTooltipVisible] = useState(false);
+
+  const toggleTooltip = () => {
+    setIsTooltipVisible(!isTooltipVisible);
+  };
 
   // Load initial insights when panel opens
   useEffect(() => {
@@ -387,18 +393,26 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
           className="fixed top-16 animate-fadeInUp left-0 right-4 bottom-0 sm:right-4 sm:top-20 sm:bottom-4 sm:left-auto p-0 sm:w-96 w-full bg-[#2f2f33]/95 backdrop-blur-sm border border-[#2f2f33]/20 rounded-lg z-50 flex flex-col shadow-xl"
           style={{ animationDelay: `5s` }}
         >
-          <div className="flex items-center justify-between p-4 border-b border-[#2f2f33]/20">
-            <div className="relative group">
+          <div className="flex items-center justify-between p-4 border-b border-[#2f2f33]/20 ">
+            <div className="relative">
               <div className="flex items-center gap-2">
                 <ScanEyeIcon className="w-5 h-5 text-[#008259]" />
                 <h3 className="text-white font-medium">Trending Topics</h3>
                 {api.sessionId && <span className="text-xs text-[#008259]">●</span>}
-
-                <div className="absolute left-0 top-full mt-2 w-64 bg-gray-800 text-white text-sm rounded-lg p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 shadow-lg">
-                  <p className="leading-relaxed">
-                    Track real-time social trends to identify opportunities before they peak
-                  </p>
-                  <div className="absolute -top-2 left-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-gray-800"></div>
+                <div className="relative group">
+                  <button onClick={toggleTooltip} className="focus:outline-none mt-2">
+                    <InfoIcon className="w-4 h-4 text-[#008259] cursor-pointer" />
+                  </button>
+                  <div
+                    className={`absolute -left-12 top-full mt-2 w-64 bg-gray-800 text-white text-sm rounded-lg p-3 shadow-lg z-10 transition-all duration-200 ${
+                      isTooltipVisible || "opacity-0 invisible group-hover:opacity-100 group-hover:visible"
+                    }`}
+                  >
+                    <p className="leading-relaxed">
+                      Track real-time social trends to identify opportunities before they peak
+                    </p>
+                    <div className="absolute -top-2 left-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-gray-800"></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -516,13 +530,27 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
 
       {/* Mobile: Full page view */}
       <div className="md:hidden fixed top-0 left-0 right-0 bottom-0 bg-[#232328] z-40 flex flex-col">
-
         {/* Header */}
         <div className="bg-[#232328] px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" onClick={toggleTooltip}>
             <ScanEyeIcon className="w-5 h-5 text-[#008259]" />
             <h3 className="text-white font-medium text-lg">Trending Topics</h3>
             {api.sessionId && <span className="text-xs text-[#008259]">●</span>}
+            <div className="relative group">
+              <button className="focus:outline-none mt-2">
+                <InfoIcon className="w-4 h-4 text-[#008259] cursor-pointer" />
+              </button>
+              <div
+                className={`absolute -left-14 top-full mt-2 w-64 bg-gray-800 text-white text-sm rounded-lg p-3 shadow-lg z-10 transition-all duration-200 ${
+                  isTooltipVisible || "opacity-0 invisible group-hover:opacity-100 group-hover:visible"
+                }`}
+              >
+                <p className="leading-relaxed">
+                  Track real-time social trends to identify opportunities before they peak
+                </p>
+                <div className="absolute -top-2 left-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-gray-800"></div>
+              </div>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -550,7 +578,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
                   message.type === "user"
                     ? "bg-[#008259] text-white"
                     : message.type === "insight"
-                      ? "bg-[#008259]/20 border border-[#008259]/40 text-white"
+                      ? "bg-[#008259]/20 border border-[#008259]/40 text-[#008259]"
                       : "bg-[#2f2f33] text-gray-100 border border-[#008259]/20"
                 }`}
               >
@@ -815,7 +843,7 @@ export default function PivotMarketApp() {
       {/* Hero Section */}
 
       <div
-        className="w-full mb-12 bg-cover overflow-hidden bg-center"
+        className="w-full mb-8 lg:mb-12 bg-cover overflow-hidden bg-center"
         style={{
           animationDelay: "0.2s",
           backgroundImage: "url('/cover.png')",
@@ -848,7 +876,7 @@ export default function PivotMarketApp() {
           </div>
         </div>
       </div>
-      <div className="max-w-7xl mx-auto mb-16 px-4 ">
+      <div className="max-w-7xl mx-auto lg:mb-16 mb-8 px-4 ">
         {/* Filters Section */}
         <div className="mb-8 ">
           <div className="flex items-center gap-1 mb-6 flex-wrap">
@@ -961,6 +989,12 @@ export default function PivotMarketApp() {
                 </div>
               </div>
             </div>
+            <Link
+              href="/profile"
+              className="bg-[#008259] hidden lg:flex hover:bg-[#006b46] text-white text-sm font-medium px-3 py-3 rounded-lg transition-colors"
+            >
+              My Bets
+            </Link>
           </div>
         </div>
 
@@ -1068,8 +1102,8 @@ export default function PivotMarketApp() {
 
       {/* AI Assistant Panel */}
       <AIAssistantPanel isVisible={showAIAssistant} onClose={() => setShowAIAssistant(false)} />
-      <MobileBottomNav 
-        onInsightsClick={() => setShowAIAssistant(!showAIAssistant)} 
+      <MobileBottomNav
+        onInsightsClick={() => setShowAIAssistant(!showAIAssistant)}
         isInsightsActive={showAIAssistant}
         onInsightsClose={() => setShowAIAssistant(false)}
       />

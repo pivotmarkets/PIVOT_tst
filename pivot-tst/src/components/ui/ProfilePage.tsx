@@ -11,6 +11,7 @@ import {
   User,
   Activity,
   Store,
+  Info,
 } from "lucide-react";
 import { truncateAddress, useWallet } from "@aptos-labs/wallet-adapter-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -18,164 +19,269 @@ import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 import { WalletSelector } from "../WalletSelector";
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from "recharts";
 import MobileBottomNav from "./MobileBottomNav";
+import Link from "next/link";
 
-// Mock data - replace with real data from your API
-const mockPerformanceData = [
-  { date: "Tue 07", value: 1000 },
-  { date: "Wed 08", value: 1020 },
-  { date: "Thu 09", value: 1100 },
-  { date: "Fri 10", value: 1080 },
-  { date: "Sat 11", value: 1135 },
-];
+import {
+  getUserPositions,
+  getUserPositionDetails,
+  getMarketTotalValueLocked,
+  getMarketPoolBalances,
+  getAllMarketsWithTvl,
+  getPlatformStats,
+  getMarketDetails,
+  getAllMarketIds,
+  getMarketsPaginated,
+  getMarketSummary,
+  getAllMarketSummaries,
+  getMarketSummariesPaginated,
+  getPositionDetails,
+  getMarketCreationParams,
+  getMarketCount,
+  getUserPositionsWithDetails,
+  getMarketAnalytics,
+  getDailyVolume,
+  getHourlyVolume,
+  getVolumeByTimeRange,
+  getLatestTrades,
+  getUserTradeHistory,
+  getPriceAtTimestamp,
+  getVolumeWeightedAveragePrice,
+  formatPrice,
+  formatShares,
+  formatTimestamp,
+  MarketDetails,
+  TradeRecord,
+  Position,
+} from "@/app/view-functions/markets";
 
 const USDC_ASSET_ADDRESS: string = "0x69091fbab5f7d635ee7ac5098cf0c1efbe31d68fec0f2cd565e8d168daf52832";
 const config = new AptosConfig({ network: Network.TESTNET });
 const aptos = new Aptos(config);
-
-// const mockTrades = [
-//   {
-//     id: 1,
-//     market: "Will BTC hit $100k?",
-//     type: "BUY",
-//     outcome: "YES",
-//     shares: 100,
-//     price: 0.65,
-//     total: 65,
-//     date: "2025-01-10",
-//     status: "completed",
-//   },
-//   {
-//     id: 2,
-//     market: "ETH vs BTC Performance",
-//     type: "SELL",
-//     outcome: "NO",
-//     shares: 50,
-//     price: 0.42,
-//     total: 21,
-//     date: "2025-01-09",
-//     status: "completed",
-//   },
-// ];
-
-// const mockMarkets = [
-//   {
-//     id: 1,
-//     title: "Will BTC hit $100k in January 2025?",
-//     volume: 5200,
-//     traders: 234,
-//     endDate: "2025-01-31",
-//     status: "active",
-//   },
-//   {
-//     id: 2,
-//     title: "Will Aptos TVL exceed $1B?",
-//     volume: 3800,
-//     traders: 156,
-//     endDate: "2025-03-31",
-//     status: "active",
-//   },
-// ];
+const SHARES_DECIMALS = 6; // Updated to 6 for USDC
+const PRICE_SCALE = 10000; // Basis points (0-10000 for 0-1)
 
 const ProfilePage = () => {
   const [activeTab, setActiveTab] = useState("summary");
   const [timeRange, setTimeRange] = useState("ALL");
+  const [balance, setBalance] = useState<number>(0);
+  const [loadingBalance, setLoadingBalance] = useState(false);
+  const [netWorth, setNetWorth] = useState(0);
+  const [invested, setInvested] = useState(0);
+  const [profit, setProfit] = useState(0);
+  const [winRate, setWinRate] = useState(0);
+  const [wins, setWins] = useState(0);
+  const [losses, setLosses] = useState(0);
+  const [avgHoldTime, setAvgHoldTime] = useState(0);
+  const [totalTrades, setTotalTrades] = useState(0);
+  const [avgTradeSize, setAvgTradeSize] = useState(0);
+  const [marketParticipation, setMarketParticipation] = useState(0);
+  const [userTrades, setUserTrades] = useState<TradeRecord[]>([]);
+  const [createdMarkets, setCreatedMarkets] = useState<MarketDetails[]>([]);
+  const [userPositionsByMarket, setUserPositionsByMarket] = useState<
+    { marketId: number; positions: Position[]; marketDetails: MarketDetails }[]
+  >([]);
+  const [portfolioData, setPortfolioData] = useState<{ date: string; value: number }[]>([]);
+  const [loadingPositions, setLoadingPositions] = useState(false);
+  const [loadingTrades, setLoadingTrades] = useState(false);
+  const [loadingMarkets, setLoadingMarkets] = useState(false);
+  const [loadingPortfolio, setLoadingPortfolio] = useState(false);
+  const { account } = useWallet();
 
-  const useUSDCBalance = () => {
-    const { account } = useWallet();
-    const [balance, setBalance] = useState<number>(0);
-    const [loading, setLoading] = useState(false);
+  // Fetch USDC balance
+  const fetchBalance = async () => {
+    if (!account?.address) {
+      setBalance(0);
+      return;
+    }
 
-    const fetchBalance = async () => {
-      if (!account?.address) {
-        setBalance(0);
-        return;
+    setLoadingBalance(true);
+    try {
+      const balances = await aptos.getCurrentFungibleAssetBalances({
+        options: {
+          where: {
+            owner_address: { _eq: account.address.toString() },
+          },
+        },
+      });
+
+      const usdcBalances = balances.filter((b: any) => b.asset_type.toLowerCase() === USDC_ASSET_ADDRESS.toLowerCase());
+
+      let formatted = 0;
+      if (usdcBalances.length > 0) {
+        const primaryBalance = usdcBalances.find((b: any) => b.is_primary === true);
+        if (primaryBalance) {
+          formatted = Number(primaryBalance.amount) / 1e6;
+        } else {
+          const mostRecentBalance = usdcBalances.sort(
+            (a: any, b: any) =>
+              new Date(b.last_transaction_timestamp).getTime() - new Date(a.last_transaction_timestamp).getTime(),
+          )[0];
+          formatted = Number(mostRecentBalance.amount) / 1e6;
+        }
       }
 
-      setLoading(true);
-      try {
-        const balances = await aptos.getCurrentFungibleAssetBalances({
-          options: {
-            where: {
-              owner_address: { _eq: account.address.toString() },
-            },
-          },
-        });
+      setBalance(formatted);
+    } catch (error) {
+      console.error("Error fetching USDC balance:", error);
+      setBalance(0);
+    } finally {
+      setLoadingBalance(false);
+    }
+  };
 
-        // Filter for all USDC balances
-        const usdcBalances = balances.filter(
-          (b: any) => b.asset_type.toLowerCase() === USDC_ASSET_ADDRESS.toLowerCase(),
-        );
+  // Generate slug from market title
+  const generateSlug = (title: string) => {
+    return title
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "");
+  };
 
-        let formatted = 0;
 
-        if (usdcBalances.length > 0) {
-          // Find the balance with is_primary: true
-          const primaryBalance = usdcBalances.find((b: any) => b.is_primary === true);
+  // Fetch all user profile data
+  const fetchProfileData = async () => {
+    if (!account?.address) return;
 
-          if (primaryBalance) {
-            formatted = Number(primaryBalance.amount) / 1e6;
-          } else {
-            // Fallback to most recent if no primary found
-            const mostRecentBalance = usdcBalances.sort(
-              (a: any, b: any) =>
-                new Date(b.last_transaction_timestamp).getTime() - new Date(a.last_transaction_timestamp).getTime(),
-            )[0];
+    const user = account.address.toString();
 
-            formatted = Number(mostRecentBalance.amount) / 1e6;
-            console.log("No primary balance found, using most recent:", mostRecentBalance);
+    try {
+      const marketIds = await getAllMarketIds();
+      const numMarketIds = marketIds.map((id) => Number(id));
+      const totalMarkets = await getMarketCount();
+
+      setLoadingMarkets(true);
+      const detailsPromises = numMarketIds.map((id) => getMarketDetails(id));
+      const allMarketDetails = (await Promise.all(detailsPromises)).filter((d) => d !== null) as MarketDetails[];
+      setCreatedMarkets(allMarketDetails.filter((m) => m.creator === user));
+      setLoadingMarkets(false);
+
+      setLoadingPositions(true);
+      const positionsPromises = numMarketIds.map((id) => getUserPositionDetails(id, user));
+      const positionsPerMarket = await Promise.all(positionsPromises);
+      const positionsByMarket = [];
+      for (let i = 0; i < numMarketIds.length; i++) {
+        const pos = positionsPerMarket[i];
+        if (pos.length > 0) {
+          const marketId = numMarketIds[i];
+          const marketDetails = allMarketDetails.find((m) => Number(m.id) === marketId);
+          if (marketDetails) {
+            positionsByMarket.push({ marketId, positions: pos, marketDetails });
           }
         }
-
-        setBalance(formatted);
-      } catch (error) {
-        console.error("Error fetching USDC balance:", error);
-        setBalance(0);
-      } finally {
-        setLoading(false);
       }
-    };
+      setUserPositionsByMarket(positionsByMarket);
+      setLoadingPositions(false);
 
-    useEffect(() => {
-      fetchBalance();
-    }, [account?.address]);
+      setLoadingTrades(true);
+      const tradesPromises = numMarketIds.map((id) => getUserTradeHistory(id, user, 50));
+      let allTrades = (await Promise.all(tradesPromises)).flat();
+      allTrades = allTrades.sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
+      setUserTrades(allTrades);
+      setTotalTrades(allTrades.length);
+      setLoadingTrades(false);
 
-    return { balance, loading, refetch: fetchBalance };
+      // Calculate invested as the cost basis of current shares owned
+      let invested = 0;
+      let positionsValue = 0;
+      let unrealizedPnl = 0;
+      positionsByMarket.forEach((pm) => {
+        pm.positions.forEach((p) => {
+          const currentPriceBp = p.outcome === 1 ? Number(pm.marketDetails.yesPrice) : Number(pm.marketDetails.noPrice);
+          const currentPrice = currentPriceBp / PRICE_SCALE;
+          const shares = p.shares / 10 ** SHARES_DECIMALS;
+          const value = shares * currentPrice;
+          positionsValue += value;
+          const avgPrice = Number(p.avgPrice) / PRICE_SCALE;
+          const cost = shares * avgPrice;
+          invested += cost; // Add cost of shares owned to invested
+          unrealizedPnl += value - cost;
+        });
+      });
+
+      const inflows = allTrades
+        .filter((t) => t.tradeType === 2 || t.tradeType === 4 || t.tradeType === 5)
+        .reduce((sum, t) => sum + Number(t.amount) / 10 ** SHARES_DECIMALS, 0);
+
+      const realizedProfit = inflows - invested; // Use invested instead of outflows for realized profit
+
+      const totalProfit = realizedProfit + unrealizedPnl;
+      setInvested(invested);
+      setProfit(totalProfit);
+      setNetWorth(balance + positionsValue);
+
+      let tempWins = 0;
+      let tempLosses = 0;
+      positionsByMarket.forEach((pm) => {
+        if (pm.marketDetails.resolved) {
+          const winningOutcome = pm.marketDetails.outcome;
+          pm.positions.forEach((p) => {
+            if (p.outcome === winningOutcome) tempWins++;
+            else tempLosses++;
+          });
+        }
+      });
+      setWins(tempWins);
+      setLosses(tempLosses);
+      const totalResolved = tempWins + tempLosses;
+      setWinRate(totalResolved > 0 ? (tempWins / totalResolved) * 100 : 0);
+
+      const currentTime = Math.floor(Date.now() / 1000);
+      const holdTimes = positionsByMarket.flatMap((pm) =>
+        pm.positions.map((p) => (currentTime - Number(p.timestamp)) / 86400),
+      );
+      const avg = holdTimes.length > 0 ? holdTimes.reduce((sum, t) => sum + t, 0) / holdTimes.length : 0;
+      setAvgHoldTime(avg);
+
+      const avgSize =
+        allTrades.length > 0
+          ? allTrades.reduce((sum, t) => sum + Number(t.amount) / 10 ** SHARES_DECIMALS, 0) / allTrades.length
+          : 0;
+      setAvgTradeSize(avgSize);
+
+      const uniqueMarkets = new Set(allTrades.map((t) => t.tradeId.split("_")[0])).size;
+      setMarketParticipation(totalMarkets > 0 ? (uniqueMarkets / totalMarkets) * 100 : 0);
+
+    } catch (error) {
+      console.error("Error fetching profile data:", error);
+      setLoadingPositions(false);
+      setLoadingTrades(false);
+      setLoadingMarkets(false);
+      // setLoadingPortfolio(false);
+    }
   };
+
+  useEffect(() => {
+    fetchBalance();
+    fetchProfileData();
+  }, [account?.address]);
+
   // Overview Tab Component
   const OverviewTab = () => (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-6"
-    >
-      {/* Portfolio Chart */}
-      <div className="bg-[#2f2f33] rounded-xl p-6 border border-gray-700/20">
+    <div className="space-y-6">
+      <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl mb-5 p-5 sm:p-6">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-white">Portfolio</h2>
         </div>
-
-        {/* Net Worth Display */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-2">
             <div className="rounded-full bg-blue-500 flex items-center justify-center">
               <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-8 h-8 rounded-full" />
             </div>
             <div>
-              <div className="text-3xl font-bold text-white">{balance}</div>
+              <div className="text-3xl font-bold text-white">
+                {loadingBalance || loadingPortfolio ? "" : netWorth.toFixed(3)}
+              </div>
               <div className="text-sm text-gray-400">net worth</div>
             </div>
           </div>
         </div>
-
-        {/* Stats Grid */}
         <div className="grid grid-cols-4 gap-4 -ml-3 mb-6">
           <div className="text-center">
             <div className="flex items-start justify-center gap-2 mb-1 min-w-[100px]">
               <div className="flex items-center justify-center">
                 <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-6 h-6 rounded-full flex-shrink-0" />
               </div>
-              <span className="text-white font-bold truncate">{balance.toFixed(3)}</span>
+              <span className="text-white font-bold truncate">{loadingBalance ? "..." : balance.toFixed(2)}</span>
             </div>
             <div className="text-xs text-gray-400">balance</div>
           </div>
@@ -184,18 +290,21 @@ const ProfilePage = () => {
               <div className="rounded-full flex items-center justify-center">
                 <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-6 h-6 rounded-full" />
               </div>
-              <span className="text-white font-bold">0</span>
+              <span className="text-white font-bold">{invested.toFixed(2)}</span>
             </div>
             <div className="text-xs text-gray-400">invested</div>
           </div>
           <div className="text-center">
             <div className="flex items-center justify-center gap-1 mb-1">
-              <div className="rounded-full  flex items-center justify-center">
+              <div className="rounded-full flex items-center justify-center">
                 <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-6 h-6 rounded-full" />
               </div>
-              <span className="text-green-400 font-bold">+0</span>
+              <span className={`font-bold ${profit >= 0 ? "text-green-400" : "text-red-400"}`}>
+                {profit >= 0 ? "+" : ""}
+                {profit.toFixed(2)}
+              </span>
             </div>
-            <div className="text-xs text-gray-400">profit</div>
+            <div className="text-xs text-gray-400">profit/loss</div>
           </div>
           <div className="text-center">
             <div className="flex items-center justify-center gap-1 mb-1">
@@ -207,313 +316,229 @@ const ProfilePage = () => {
             <div className="text-xs text-gray-400">Bronze</div>
           </div>
         </div>
-
-        {/* Chart */}
-        <ResponsiveContainer width="100%" height={200} className="outline-none focus:outline-none">
-          <AreaChart data={mockPerformanceData} className="outline-none focus:outline-none">
-            <defs>
-              <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#008259" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#008259" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <XAxis
-              dataKey="date"
-              stroke="#6b7280"
-              tick={{ fill: "#9ca3af", fontSize: 12 }}
-              axisLine={false}
-              tickLine={false}
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "#1e293b",
-                border: "1px solid #475569",
-                borderRadius: "8px",
-              }}
-            />
-            <Area type="monotone" dataKey="value" stroke="#008259" strokeWidth={2} fill="url(#colorValue)" />
-          </AreaChart>
-        </ResponsiveContainer>
-
-        {/* Time Range Selector */}
-        <div className="flex gap-2 mt-4 w-full justify-center">
-          {["1D", "1W", "1M", "ALL"].map((range) => (
-            <button
-              key={range}
-              onClick={() => setTimeRange(range)}
-              className={`px-4 py-2 text-sm rounded-lg transition-all ${
-                timeRange === range ? "bg-[#008259] text-white" : "bg-transparent text-gray-400"
-              }`}
-            >
-              {range}
-            </button>
-          ))}
-        </div>
       </div>
-
-      {/* Quick Stats */}
       <div className="bg-[#2f2f33] rounded-xl p-6 border border-gray-700/20">
         <h3 className="text-lg font-bold text-white mb-4">Stats</h3>
-
         <div className="space-y-4">
           <div>
             <div className="flex justify-between text-sm mb-2">
-              <span className="text-gray-400">Win/Loss Record</span>
-              <span className="text-white font-medium">0W - 0L</span>
-            </div>
-            <div className="flex gap-1 h-2 rounded-full overflow-hidden bg-gray-600">
-              <div className="bg-gray-600" style={{ width: "100%" }} />
-            </div>
-          </div>
-
-          <div className="flex justify-between items-center">
-            <span className="text-gray-400 text-sm">Win Rate</span>
-            <span className="text-gray-400 font-bold">0%</span>
-          </div>
-
-          <div className="flex justify-between items-center">
-            <span className="text-gray-400 text-sm">Total ROI</span>
-            <span className="text-gray-400 font-bold">0%</span>
-          </div>
-
-          <div className="flex justify-between items-center">
-            <span className="text-gray-400 text-sm">Avg Hold Time</span>
-            <span className="text-white font-medium">0 days</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Achievements */}
-      {/* <div className="bg-[#2f2f33] rounded-xl p-6 border border-gray-700/20">
-        <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-          <Trophy className="w-5 h-5 text-amber-500" />
-          Achievements
-        </h3>
-
-        <div className="grid grid-cols-3 gap-3">
-          {mockBadges.map((badge, i) => (
-            <div
-              key={i}
-              className={`group relative aspect-square rounded-lg flex flex-col items-center justify-center p-2 cursor-pointer transition-all ${
-                badge.unlocked
-                  ? "bg-gradient-to-br from-amber-500/20 to-purple-500/20 border border-amber-500/50"
-                  : "bg-slate-700/50 border border-slate-600 opacity-50"
-              }`}
-            >
-              <div className="text-2xl mb-1">{badge.icon}</div>
-              <p className="text-xs text-center font-medium text-white">{badge.label}</p>
-              {!badge.unlocked && (
-                <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 rounded-lg">
-                  <Lock className="w-5 h-5 text-gray-500" />
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-4 text-center text-sm text-gray-400">3 of 6 badges earned</div>
-      </div> */}
-    </motion.div>
-  );
-
-  //   // Positions Tab Component
-  //   const PositionsTab = () => (
-  //     <motion.div
-  //       initial={{ opacity: 0, y: 20 }}
-  //       animate={{ opacity: 1, y: 0 }}
-  //       exit={{ opacity: 0, y: -20 }}
-  //       className="space-y-4"
-  //     >
-  //       <div className="bg-[#2f2f33] rounded-xl p-4 border  border-gray-700/20">
-  //         <h3 className="text-lg font-bold text-white mb-4">Active Positions (3)</h3>
-
-  //         {mockPositions.map((position) => (
-  //           <div key={position.id} className="border-b border-gray-800 last:border-b-0 py-4 first:pt-0 last:pb-0">
-  //             <p className="text-white font-medium text-sm mb-2">{position.marketTitle}</p>
-
-  //             <div className="grid grid-cols-2 gap-4 mb-3">
-  //               <div>
-  //                 <p className="text-gray-400 text-xs mb-1">Position</p>
-  //                 <span
-  //                   className={`px-2 py-1 rounded text-xs font-bold ${
-  //                     position.outcome === "YES" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
-  //                   }`}
-  //                 >
-  //                   {position.outcome} {position.shares.toFixed(0)}
-  //                 </span>
-  //               </div>
-
-  //               <div>
-  //                 <p className="text-gray-400 text-xs mb-1">P&L</p>
-  //                 <p className={`font-bold text-sm ${position.pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
-  //                   {position.pnl >= 0 ? "+" : ""}${position.pnl.toFixed(2)} ({position.pnlPercent >= 0 ? "+" : ""}
-  //                   {position.pnlPercent.toFixed(1)}%)
-  //                 </p>
-  //               </div>
-  //             </div>
-
-  //             <div className="flex gap-2">
-  //               <button className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm text-white font-medium transition-all">
-  //                 Add More
-  //               </button>
-  //               <button className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-white font-medium transition-all">
-  //                 Sell
-  //               </button>
-  //             </div>
-  //           </div>
-  //         ))}
-  //       </div>
-  //     </motion.div>
-  //   );
-
-  // Trades Tab Component
-  const TradesTab = () => (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-4"
-    >
-      <div className="bg-[#2f2f33] rounded-xl p-4 border-gray-700/20">
-        <h3 className="text-lg font-bold text-white mb-4">Recent Trades</h3>
-
-        {/* {mockTrades.map((trade) => (
-          <div key={trade.id} className="border-b border-gray-800 last:border-b-0 py-4 first:pt-0 last:pb-0">
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex-1">
-                <p className="text-white font-medium text-sm">{trade.market}</p>
-                <p className="text-gray-400 text-xs mt-1">{trade.date}</p>
-              </div>
-              <span
-                className={`px-2 py-1 rounded text-xs font-bold ${
-                  trade.type === "BUY" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
-                }`}
-              >
-                {trade.type}
+              <span className="text-gray-400 flex items-center">Win/Loss Record</span>
+              <span className="text-white font-medium">
+                {wins}W - {losses}L
               </span>
             </div>
-
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div>
-                <p className="text-gray-400 text-xs">Outcome</p>
-                <p className="text-white font-medium">{trade.outcome}</p>
-              </div>
-              <div>
-                <p className="text-gray-400 text-xs">Shares</p>
-                <p className="text-white font-medium">{trade.shares}</p>
-              </div>
-              <div>
-                <p className="text-gray-400 text-xs">Total</p>
-                <p className="text-white font-medium">${trade.total}</p>
-              </div>
+            <div className="flex gap-1 h-2 rounded-full overflow-hidden bg-gray-600">
+              <div className="bg-green-500" style={{ width: `${winRate}%` }} />
+              <div className="bg-red-500" style={{ width: `${100 - winRate}%` }} />
             </div>
           </div>
-        ))} */}
-        <div className="border-b border-gray-800 last:border-b-0 py-4 first:pt-0 mb-2.5 last:pb-0 flex items-center justify-center gap-2">
-          <Activity className="w-4 h-4 text-gray-400" />
-          <p className="text-gray-400 text-sm text-center">No trades yet</p>
+
+          <div className="flex justify-between items-center">
+            <span className="text-gray-400 text-sm flex items-center">Win Rate</span>
+            <span className="text-white font-bold">{winRate.toFixed(0)}%</span>
+          </div>
+
+          <div className="flex justify-between items-center">
+            <span className="text-gray-400 text-sm flex items-center">Total ROI</span>
+            <span className={`text-white font-bold ${profit / invested >= 0 ? "text-green-400" : "text-red-400"}`}>
+              {invested > 0 ? ((profit / invested) * 100).toFixed(0) : 0}%
+            </span>
+          </div>
+
+          <div className="flex justify-between items-center">
+            <span className="text-gray-400 text-sm flex items-center">Avg Hold Time</span>
+            <span className="text-white font-medium">{avgHoldTime.toFixed(0)} days</span>
+          </div>
+
+          <div className="flex justify-between items-center">
+            <span className="text-gray-400 text-sm flex items-center">Total Trades</span>
+            <span className="text-white font-medium">{totalTrades}</span>
+          </div>
         </div>
       </div>
-    </motion.div>
+    </div>
+  );
+
+  // Positions Tab Component
+  const PositionsTab = () => (
+    <div className="space-y-4">
+      <div className="bg-[#2f2f33] rounded-xl p-4 border-gray-700/20">
+        <h3 className="text-lg font-bold text-white mb-4">Your Positions ({userPositionsByMarket.length})</h3>
+        {loadingPositions ? (
+          <div className="text-center text-gray-400">Loading positions...</div>
+        ) : userPositionsByMarket.length === 0 ? (
+          <div className="border-b border-gray-800 last:border-b-0 py-4 mb-2.5 first:pt-0 last:pb-0 flex items-center justify-center gap-2">
+            <Activity className="w-4 h-4 text-gray-400" />
+            <p className="text-gray-400 text-sm text-center">No active positions</p>
+          </div>
+        ) : (
+          userPositionsByMarket.map((pm) => {
+            const isExpiringSoon = Number(pm.marketDetails.endTime) < Math.floor(Date.now() / 1000) + 86400;
+            const slug = generateSlug(pm.marketDetails.title);
+            return (
+              <Link
+                key={pm.marketId}
+                href={`/market/${slug}/${pm.marketId}`}
+                className="block border-b border-gray-800 last:border-b-0 py-4 first:pt-0 last:pb-0 hover:bg-gray-700/20 transition-colors cursor-pointer"
+              >
+                <div className="flex justify-between items-center mb-2">
+                  <p className="text-white font-medium text-sm">{pm.marketDetails.title}</p>
+                  <span
+                    className={`text-xs px-2 py-1 rounded ${
+                      pm.marketDetails.resolved
+                        ? "bg-blue-500/20 text-blue-400"
+                        : isExpiringSoon
+                          ? "bg-yellow-500/20 text-yellow-400"
+                          : "bg-green-500/20 text-green-400"
+                    }`}
+                  >
+                    {pm.marketDetails.resolved ? "Resolved" : isExpiringSoon ? "Closed" : "Active"}
+                  </span>
+                </div>
+                {pm.positions.map((pos, index) => {
+                  const currentPriceBp =
+                    pos.outcome === 1 ? Number(pm.marketDetails.yesPrice) : Number(pm.marketDetails.noPrice);
+                  const currentPrice = currentPriceBp / PRICE_SCALE;
+                  const shares = pos.shares / 10 ** SHARES_DECIMALS;
+                  const value = shares * currentPrice;
+                  const avgPrice = Number(pos.avgPrice) / PRICE_SCALE;
+                  const cost = shares * avgPrice;
+                  const pnl = value - cost;
+                  const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
+
+                  return (
+                    <div key={index} className="mb-3">
+                      <div className="grid grid-cols-3 gap-4 mb-3">
+                        <div>
+                          <p className="text-gray-400 text-xs mb-1">Position</p>
+                          <span
+                            className={`px-2 py-1 rounded text-xs font-bold ${
+                              pos.outcome === 1 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                            }`}
+                          >
+                            {pos.outcome === 1 ? "YES" : "NO"} {shares.toFixed(2)}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-xs mb-1">P&L</p>
+                          <p className={`font-bold text-sm ${pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                            {pnl >= 0 ? "+" : ""}
+                            {pnl.toFixed(2)} ({pnlPercent >= 0 ? "+" : ""}
+                            {pnlPercent.toFixed(1)}%)
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-xs mb-1">Current Price</p>
+                          <p className="text-white font-medium">
+                            {(currentPrice * 100).toFixed(2).replace(/\.00$/, "")}¢
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </Link>
+            );
+          })
+        )}
+      </div>
+    </div>
   );
 
   // Markets Tab Component
   const MarketsTab = () => (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-4"
-    >
+    <div className="space-y-4">
       <div className="bg-[#2f2f33] rounded-xl p-4 border-gray-700/20">
         <h3 className="text-lg font-bold text-white mb-4">Created Markets</h3>
-
-        {/* {mockMarkets.map((market) => (
-          <div key={market.id} className="border-b border-gray-800 last:border-b-0 py-4 first:pt-0 last:pb-0">
-            <p className="text-white font-medium text-sm mb-3">{market.title}</p>
-
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div>
-                <p className="text-gray-400 text-xs">Volume</p>
-                <p className="text-white font-medium">${market.volume}</p>
-              </div>
-              <div>
-                <p className="text-gray-400 text-xs">Traders</p>
-                <p className="text-white font-medium">{market.traders}</p>
-              </div>
-              <div>
-                <p className="text-gray-400 text-xs">Ends</p>
-                <p className="text-white font-medium">{market.endDate}</p>
-              </div>
-            </div>
+        {loadingMarkets ? (
+          <div className="text-center text-gray-400">Loading markets...</div>
+        ) : createdMarkets.length === 0 ? (
+          <div className="border-b border-gray-800 last:border-b-0 py-4 mb-2.5 first:pt-0 last:pb-0 flex items-center justify-center gap-2">
+            <Store className="w-4 h-4 text-gray-400" />
+            <p className="text-gray-400 text-sm text-center">No markets created yet</p>
           </div>
-        ))} */}
-        <div className="border-b border-gray-800 last:border-b-0 py-4 mb-2.5 first:pt-0 last:pb-0 flex items-center justify-center gap-2">
-          <Store className="w-4 h-4 text-gray-400" />
-          <p className="text-gray-400 text-sm text-center">No markets created yet</p>
-        </div>
+        ) : (
+          createdMarkets.map((market) => (
+            <Link
+              key={market.id}
+              href={`/market/${generateSlug(market.title)}/${market.id}`}
+              className="block border-b border-gray-800 last:border-b-0 py-4 first:pt-0 last:pb-0 hover:bg-gray-700/20 transition-colors cursor-pointer"
+            >
+              <p className="text-white font-medium text-sm mb-3">{market.title}</p>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <p className="text-gray-400 text-xs">TVL</p>
+                  <p className="text-white font-medium">
+                    {(Number(market.totalValueLocked) / 10 ** SHARES_DECIMALS).toFixed(2)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-xs">Traders</p>
+                  <p className="text-white font-medium">{market.participantCount}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-xs">Ends</p>
+                  <p className="text-white font-medium">
+                    {new Date(Number(market.endTime) * 1000).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+            </Link>
+          ))
+        )}
       </div>
-    </motion.div>
+    </div>
   );
 
-  // Render tab content based on active tab
+  // Render tab content
   const renderTabContent = () => {
     switch (activeTab) {
       case "summary":
         return <OverviewTab />;
-      case "trades":
-        return <TradesTab />;
+      case "positions":
+        return <PositionsTab />;
       case "markets":
         return <MarketsTab />;
       default:
         return <OverviewTab />;
     }
   };
-  const { account } = useWallet();
-  const { balance } = useUSDCBalance();
 
   return (
     <div className="min-h-screen bg-[#232328]">
-      {/* Header */}
       <header className="bg-[#1a1a1e2c] animate-fadeInDown sticky top-0 z-40 overflow-hidden border-b border-b-[var(--Stroke-Dark,#2c2c2f)] px-3 sm:px-4 lg:px-4">
         <div className="max-w-7xl mx-auto py-3 sm:py-4">
           <div className="flex items-center justify-between">
-            {/* Logo Section */}
             <div className="flex items-center gap-3 sm:gap-6">
               <h1 className="text-xl sm:text-2xl font-bold text-white">
-                <img
-                  src="/icons/p-lg.png"
-                  alt="Pivot Logo"
-                  className="ml-1 sm:ml-2 h-10 w-10 sm:h-12 sm:w-12 text-blue-400"
-                />
+                <Link href="/">
+                  <img
+                    src="/icons/p-lg.png"
+                    alt="Pivot Logo"
+                    className="ml-1 sm:ml-2 h-10 w-10 sm:h-12 sm:w-12 text-blue-400"
+                  />
+                </Link>
               </h1>
             </div>
-
-            {/* Right Side Actions */}
             <div className="flex items-center gap-2 sm:gap-4">
-              {/* Wallet Selector */}
               <div className="flex gap-1 sm:gap-2 items-center">
                 <WalletSelector />
+                {!account?.address && <span className="text-xs text-red-400">Wallet not connected</span>}
               </div>
             </div>
           </div>
         </div>
       </header>
-
-      {/* Profile Header */}
-      <div className="max-w-7xl mx-auto px-4 py-6 pb-32">
+      <div className="max-w-6xl px-4 sm:mx-auto mt-12 lg:pb-8 mx-auto py-6 pb-32">
         <div className="flex flex-col items-center gap-4 mb-6">
-          {/* Avatar */}
           <div className="relative">
-            <div className="w-20 h-20 rounded-full bg-gray-800 flex items-center justify-center border border-gray-700">
+            <div className="w-24 h-24 rounded-full bg-gray-800 flex items-center justify-center border border-gray-700">
               <User className="w-10 h-10 text-gray-400" />
             </div>
             <div className="absolute -bottom-1 -right-1 bg-[#008259] rounded-full p-1">
               <CheckCircle className="w-4 h-4 text-white" />
             </div>
           </div>
-
-          {/* Name and Handle */}
           <div className="text-center">
             <div className="flex items-center justify-center gap-2">
               <h1 className="text-2xl font-bold text-white">Creator</h1>
@@ -521,34 +546,12 @@ const ProfilePage = () => {
             </div>
             <p className="text-gray-400">{truncateAddress(account?.address.toStringLong())}</p>
           </div>
-
-          {/* Following, Followers, and Creator Earnings */}
-          <div className="flex gap-2.5 sm:gap-6 text-gray-300">
-            <button className="text-center px-2 py-1 sm:px-3 sm:py-2 hover:bg-gray-700 rounded-md transition-colors">
-              <span className="text-xs sm:text-sm font-semibold text-gray-200">0 Following</span>
-            </button>
-            <button className="text-center px-2 py-1 sm:px-3 sm:py-2 hover:bg-gray-700 rounded-md transition-colors">
-              <span className="text-xs sm:text-sm font-semibold text-gray-200">0 Followers</span>
-            </button>
-            <button className="text-center px-2 py-1 sm:px-3 sm:py-2 hover:bg-gray-700 rounded-md transition-colors">
-              <span className="text-xs sm:text-sm font-semibold text-gray-200">10 Bronze Rank</span>
-            </button>
-          </div>
-
-          {/* Get Mana Button (Commented Out) */}
-          {/* <button className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-2 rounded-full font-semibold flex items-center gap-2 transition-all">
-      Get mana Ⓜ
-    </button> */}
         </div>
-
-        {/* Tab Navigation */}
         <div className="flex justify-center mb-6 pb-2 border-b border-gray-800">
           <div className="flex gap-1 w-full max-w-md">
-            {" "}
-            {/* Optional max width for control */}
             {[
               { id: "summary", icon: BarChart3, label: "Summary" },
-              { id: "trades", icon: TrendingUp, label: "Trades" },
+              { id: "positions", icon: TrendingUp, label: "Positions" },
               { id: "markets", icon: MessageCircle, label: "Markets" },
             ].map((tab) => (
               <button
@@ -566,11 +569,8 @@ const ProfilePage = () => {
             ))}
           </div>
         </div>
-
-        {/* Tab Content */}
         <AnimatePresence mode="wait">{renderTabContent()}</AnimatePresence>
       </div>
-
       <MobileBottomNav />
     </div>
   );

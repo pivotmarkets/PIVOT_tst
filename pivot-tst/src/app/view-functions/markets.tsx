@@ -74,7 +74,7 @@ export interface MarketSummary {
   status: string;
 }
 
-interface Position {
+export interface Position {
   user: string;
   outcome: number;
   shares: number;

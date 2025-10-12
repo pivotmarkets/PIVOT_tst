@@ -669,7 +669,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
           </div>
         </header>
 
-        <div className="max-w-6xl pb-12 mx-3 lg:mx-auto mt-12">
+        <div className="max-w-6xl pb-12 mx-3 px-1 lg:mx-auto mt-12">
           <div className="animate-pulse">
             <div className="h-8 bg-[#2f2f33] rounded-lg w-1/3 mb-6"></div>
             <div className="h-64 bg-[#2f2f33] rounded-lg mb-6"></div>
@@ -781,7 +781,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         </div>
       </header>
 
-      <div className="max-w-6xl px-3 sm:mx-auto mt-12 pb-16 lg:pb-8">
+      <div className="max-w-6xl px-4 sm:mx-auto mt-12 pb-16 lg:pb-8">
         {/* Market Info Card */}
         <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl mb-5 p-5 sm:p-6">
           {/* Market Header Section */}
