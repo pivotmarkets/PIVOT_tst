@@ -11,46 +11,20 @@ import {
   User,
   Activity,
   Store,
-  Info,
 } from "lucide-react";
 import { truncateAddress, useWallet } from "@aptos-labs/wallet-adapter-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 import { WalletSelector } from "../WalletSelector";
-import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from "recharts";
 import MobileBottomNav from "./MobileBottomNav";
 import Link from "next/link";
 
 import {
-  getUserPositions,
   getUserPositionDetails,
-  getMarketTotalValueLocked,
-  getMarketPoolBalances,
-  getAllMarketsWithTvl,
-  getPlatformStats,
   getMarketDetails,
   getAllMarketIds,
-  getMarketsPaginated,
-  getMarketSummary,
-  getAllMarketSummaries,
-  getMarketSummariesPaginated,
-  getPositionDetails,
-  getMarketCreationParams,
-  getMarketCount,
-  getUserPositionsWithDetails,
-  getMarketAnalytics,
-  getDailyVolume,
-  getHourlyVolume,
-  getVolumeByTimeRange,
-  getLatestTrades,
   getUserTradeHistory,
-  getPriceAtTimestamp,
-  getVolumeWeightedAveragePrice,
-  formatPrice,
-  formatShares,
-  formatTimestamp,
   MarketDetails,
-  TradeRecord,
   Position,
 } from "@/app/view-functions/markets";
 
@@ -62,7 +36,6 @@ const PRICE_SCALE = 10000; // Basis points (0-10000 for 0-1)
 
 const ProfilePage = () => {
   const [activeTab, setActiveTab] = useState("summary");
-  const [timeRange, setTimeRange] = useState("ALL");
   const [balance, setBalance] = useState<number>(0);
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [netWorth, setNetWorth] = useState(0);
@@ -73,18 +46,14 @@ const ProfilePage = () => {
   const [losses, setLosses] = useState(0);
   const [avgHoldTime, setAvgHoldTime] = useState(0);
   const [totalTrades, setTotalTrades] = useState(0);
-  const [avgTradeSize, setAvgTradeSize] = useState(0);
-  const [marketParticipation, setMarketParticipation] = useState(0);
-  const [userTrades, setUserTrades] = useState<TradeRecord[]>([]);
   const [createdMarkets, setCreatedMarkets] = useState<MarketDetails[]>([]);
   const [userPositionsByMarket, setUserPositionsByMarket] = useState<
     { marketId: number; positions: Position[]; marketDetails: MarketDetails }[]
   >([]);
-  const [portfolioData, setPortfolioData] = useState<{ date: string; value: number }[]>([]);
   const [loadingPositions, setLoadingPositions] = useState(false);
   const [loadingTrades, setLoadingTrades] = useState(false);
   const [loadingMarkets, setLoadingMarkets] = useState(false);
-  const [loadingPortfolio, setLoadingPortfolio] = useState(false);
+
   const { account } = useWallet();
 
   // Fetch USDC balance
@@ -147,9 +116,9 @@ const ProfilePage = () => {
     try {
       const marketIds = await getAllMarketIds();
       const numMarketIds = marketIds.map((id) => Number(id));
-      const totalMarkets = await getMarketCount();
 
       setLoadingMarkets(true);
+
       const detailsPromises = numMarketIds.map((id) => getMarketDetails(id));
       const allMarketDetails = (await Promise.all(detailsPromises)).filter((d) => d !== null) as MarketDetails[];
       setCreatedMarkets(allMarketDetails.filter((m) => m.creator === user));
@@ -176,10 +145,9 @@ const ProfilePage = () => {
       const tradesPromises = numMarketIds.map((id) => getUserTradeHistory(id, user, 50));
       let allTrades = (await Promise.all(tradesPromises)).flat();
       allTrades = allTrades.sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
-      setUserTrades(allTrades);
       setTotalTrades(allTrades.length);
       setLoadingTrades(false);
-
+      console.log("loadingTrades", loadingTrades)
       // Calculate invested as the cost basis of current shares owned
       let invested = 0;
       let positionsValue = 0;
@@ -231,16 +199,6 @@ const ProfilePage = () => {
       );
       const avg = holdTimes.length > 0 ? holdTimes.reduce((sum, t) => sum + t, 0) / holdTimes.length : 0;
       setAvgHoldTime(avg);
-
-      const avgSize =
-        allTrades.length > 0
-          ? allTrades.reduce((sum, t) => sum + Number(t.amount) / 10 ** SHARES_DECIMALS, 0) / allTrades.length
-          : 0;
-      setAvgTradeSize(avgSize);
-
-      const uniqueMarkets = new Set(allTrades.map((t) => t.tradeId.split("_")[0])).size;
-      setMarketParticipation(totalMarkets > 0 ? (uniqueMarkets / totalMarkets) * 100 : 0);
-
     } catch (error) {
       console.error("Error fetching profile data:", error);
       setLoadingPositions(false);
@@ -269,7 +227,7 @@ const ProfilePage = () => {
             </div>
             <div>
               <div className="text-3xl font-bold text-white">
-                {loadingBalance || loadingPortfolio ? "" : netWorth.toFixed(3)}
+                {netWorth.toFixed(3)}
               </div>
               <div className="text-sm text-gray-400">net worth</div>
             </div>
