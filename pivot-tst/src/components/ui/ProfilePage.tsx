@@ -2,15 +2,14 @@
 
 import React, { useEffect, useState } from "react";
 import {
-  BarChart3,
+  BriefcaseBusiness,
   MessageCircle,
   CheckCircle,
-  TrendingUp,
+  Presentation,
   Trophy,
   ShieldCheck,
   User,
-  Activity,
-  Store,
+  PackageOpen,
 } from "lucide-react";
 import { truncateAddress, useWallet } from "@aptos-labs/wallet-adapter-react";
 import { AnimatePresence } from "framer-motion";
@@ -106,7 +105,6 @@ const ProfilePage = () => {
       .replace(/[^a-z0-9-]/g, "");
   };
 
-
   // Fetch all user profile data
   const fetchProfileData = async () => {
     if (!account?.address) return;
@@ -143,37 +141,86 @@ const ProfilePage = () => {
 
       setLoadingTrades(true);
       const tradesPromises = numMarketIds.map((id) => getUserTradeHistory(id, user, 50));
-      let allTrades = (await Promise.all(tradesPromises)).flat();
-      allTrades = allTrades.sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
+      let tradesResults = await Promise.all(tradesPromises);
+
+      // Flatten the nested array structure properly and access raw data
+      let allTrades = tradesResults
+        .flatMap((result) => {
+          // Each result is [Array] or [Array(n)], we need to flatten one more level
+          if (Array.isArray(result) && result.length > 0 && Array.isArray(result[0])) {
+            return result[0];
+          }
+          return result;
+        })
+        .filter((t) => t !== null && t !== undefined);
+
+      allTrades = allTrades.sort((a, b) => {
+        const timeA = Number(a.timestamp || a.timestamp);
+        const timeB = Number(b.timestamp || b.timestamp);
+        return timeB - timeA;
+      });
       setTotalTrades(allTrades.length);
       setLoadingTrades(false);
-      console.log("loadingTrades", loadingTrades)
-      // Calculate invested as the cost basis of current shares owned
-      let invested = 0;
+      console.log("loadingTrades", loadingTrades);
+      console.log("First trade after proper flattening:", allTrades[0]);
+
+      // Calculate portfolio metrics from positions (source of truth)
+      let totalInvested = 0;
       let positionsValue = 0;
       let unrealizedPnl = 0;
+
       positionsByMarket.forEach((pm) => {
         pm.positions.forEach((p) => {
+          // Current market price
           const currentPriceBp = p.outcome === 1 ? Number(pm.marketDetails.yesPrice) : Number(pm.marketDetails.noPrice);
           const currentPrice = currentPriceBp / PRICE_SCALE;
           const shares = p.shares / 10 ** SHARES_DECIMALS;
+
+          // Current value of position
           const value = shares * currentPrice;
           positionsValue += value;
+
+          // Cost basis (what was actually paid including fees)
           const avgPrice = Number(p.avgPrice) / PRICE_SCALE;
           const cost = shares * avgPrice;
-          invested += cost; // Add cost of shares owned to invested
+          totalInvested += cost;
+
+          // Unrealized P&L
           unrealizedPnl += value - cost;
         });
       });
 
-      const inflows = allTrades
+      // Calculate realized profit from closed positions
+      // Total inflows from sells/redemptions
+      const totalInflows = allTrades
         .filter((t) => t.tradeType === 2 || t.tradeType === 4 || t.tradeType === 5)
         .reduce((sum, t) => sum + Number(t.amount) / 10 ** SHARES_DECIMALS, 0);
 
-      const realizedProfit = inflows - invested; // Use invested instead of outflows for realized profit
+      // Total outflows on buys
+      let totalOutflows = allTrades
+        .filter((t) => t.tradeType === 1 || t.tradeType === 3)
+        .reduce((sum, t) => sum + Number(t.amount) / 10 ** SHARES_DECIMALS, 0);
 
+      // Debug logging
+      console.log("Trade types in history:", [...new Set(allTrades.map((t) => t.tradeType))]);
+      console.log("Total outflows from trades:", totalOutflows);
+      console.log("Total invested from positions:", totalInvested);
+      console.log("All trades count:", allTrades.length);
+
+      // Fallback: If no trade history for buys, use position cost basis as invested
+      if (totalOutflows === 0 && totalInvested > 0) {
+        totalOutflows = totalInvested;
+      }
+
+      // Realized profit = inflows - (outflows spent on positions that were closed)
+      // Positions still held account for (totalInvested), so realized = inflows - (outflows - totalInvested)
+      const realizedProfit = totalInflows - (totalOutflows - totalInvested);
+
+      // Total profit = realized + unrealized
       const totalProfit = realizedProfit + unrealizedPnl;
-      setInvested(invested);
+
+      // Use total outflows as invested amount (total spent including all fees)
+      setInvested(totalOutflows);
       setProfit(totalProfit);
       setNetWorth(balance + positionsValue);
 
@@ -216,118 +263,166 @@ const ProfilePage = () => {
   // Overview Tab Component
   const OverviewTab = () => (
     <div className="space-y-6">
-      <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl mb-5 p-5 sm:p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white">Portfolio</h2>
-        </div>
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="rounded-full bg-blue-500 flex items-center justify-center">
-              <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-8 h-8 rounded-full" />
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-white">
-                {netWorth.toFixed(3)}
-              </div>
-              <div className="text-sm text-gray-400">net worth</div>
-            </div>
-          </div>
-        </div>
-        <div className="grid grid-cols-4 gap-4 -ml-3 mb-6">
-          <div className="text-center">
-            <div className="flex items-start justify-center gap-2 mb-1 min-w-[100px]">
-              <div className="flex items-center justify-center">
-                <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-6 h-6 rounded-full flex-shrink-0" />
-              </div>
-              <span className="text-white font-bold truncate">{loadingBalance ? "..." : balance.toFixed(2)}</span>
-            </div>
-            <div className="text-xs text-gray-400">balance</div>
-          </div>
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-1 mb-1">
-              <div className="rounded-full flex items-center justify-center">
-                <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-6 h-6 rounded-full" />
-              </div>
-              <span className="text-white font-bold">{invested.toFixed(2)}</span>
-            </div>
-            <div className="text-xs text-gray-400">invested</div>
-          </div>
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-1 mb-1">
-              <div className="rounded-full flex items-center justify-center">
-                <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-6 h-6 rounded-full" />
-              </div>
-              <span className={`font-bold ${profit >= 0 ? "text-green-400" : "text-red-400"}`}>
-                {profit >= 0 ? "+" : ""}
-                {profit.toFixed(2)}
-              </span>
-            </div>
-            <div className="text-xs text-gray-400">profit/loss</div>
-          </div>
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-1 mb-1">
-              <div className="w-6 h-6 rounded bg-orange-900/30 flex items-center justify-center">
-                <Trophy className="w-3 h-3 text-orange-500" />
-              </div>
-              <span className="text-white font-bold">10</span>
-            </div>
-            <div className="text-xs text-gray-400">Bronze</div>
-          </div>
-        </div>
+    <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl mb-5 p-6">
+  <div className="flex items-center justify-between mb-6">
+    <h2 className="text-xl font-bold text-white">Portfolio</h2>
+  </div>
+  <div className="mb-6">
+    <div className="flex items-center gap-2 mb-2">
+      <div className="rounded-full bg-blue-500 flex items-center justify-center">
+        <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-8 h-8 rounded-full" />
       </div>
-      <div className="bg-[#2f2f33] rounded-xl p-6 border border-gray-700/20">
-        <h3 className="text-lg font-bold text-white mb-4">Stats</h3>
-        <div className="space-y-4">
-          <div>
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-gray-400 flex items-center">Win/Loss Record</span>
-              <span className="text-white font-medium">
-                {wins}W - {losses}L
-              </span>
-            </div>
-            <div className="flex gap-1 h-2 rounded-full overflow-hidden bg-gray-600">
+      <div>
+        {loadingBalance || !account?.address ? (
+          <div className="h-9 w-32 bg-gray-700/50 rounded-lg animate-pulse mb-1"></div>
+        ) : (
+          <div className="text-3xl font-bold text-white">{netWorth.toFixed(3)}</div>
+        )}
+        <div className="text-sm text-gray-400">net worth</div>
+      </div>
+    </div>
+  </div>
+  <div className="grid grid-cols-4 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
+    <div className="text-center">
+      <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-1">
+        <div className="flex items-center justify-center flex-shrink-0">
+          <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+        </div>
+        {loadingBalance || !account?.address ? (
+          <div className="h-5 w-16 bg-gray-700/50 rounded animate-pulse"></div>
+        ) : (
+          <span className="text-white font-bold text-sm sm:text-base truncate">
+            {balance.toFixed(2)}
+          </span>
+        )}
+      </div>
+      <div className="text-xs text-gray-400">balance</div>
+    </div>
+    <div className="text-center">
+      <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-1">
+        <div className="flex items-center justify-center flex-shrink-0">
+          <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+        </div>
+        {loadingBalance || !account?.address ? (
+          <div className="h-5 w-16 bg-gray-700/50 rounded animate-pulse"></div>
+        ) : (
+          <span className="text-white font-bold text-sm sm:text-base truncate">{invested.toFixed(2)}</span>
+        )}
+      </div>
+      <div className="text-xs text-gray-400">invested</div>
+    </div>
+    <div className="text-center">
+      <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-1">
+        <div className="flex items-center justify-center flex-shrink-0">
+          <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+        </div>
+        {loadingBalance || !account?.address ? (
+          <div className="h-5 w-16 bg-gray-700/50 rounded animate-pulse"></div>
+        ) : (
+          <span
+            className={`font-bold text-sm sm:text-base truncate ${profit >= 0 ? "text-green-400" : "text-red-400"}`}
+          >
+            {profit >= 0 ? "+" : ""}
+            {profit.toFixed(2)}
+          </span>
+        )}
+      </div>
+      <div className="text-xs text-gray-400">profit/loss</div>
+    </div>
+    <div className="text-center">
+      <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-1">
+        <div className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-orange-900/30 flex items-center justify-center flex-shrink-0">
+          <Trophy className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-orange-500" />
+        </div>
+        <span className="text-white font-bold text-sm sm:text-base">10</span>
+      </div>
+      <div className="text-xs text-gray-400">Bronze</div>
+    </div>
+  </div>
+</div>
+<div className="bg-[#2f2f33] rounded-xl p-6 border border-gray-700/20">
+  <h3 className="text-lg font-bold text-white mb-4">Stats</h3>
+  <div className="space-y-4">
+    <div>
+      <div className="flex justify-between text-sm mb-2">
+        <span className="text-gray-400 flex items-center">Win/Loss Record</span>
+        {loadingBalance || !account?.address ? (
+          <div className="h-5 w-16 bg-gray-700/50 rounded animate-pulse"></div>
+        ) : (
+          <span className="text-white font-medium">
+            {wins}W - {losses}L
+          </span>
+        )}
+      </div>
+      {loadingBalance || !account?.address ? (
+        <div className="h-2 w-full bg-gray-700/50 rounded-full animate-pulse"></div>
+      ) : (
+        <div className="flex gap-1 h-2 rounded-full overflow-hidden bg-gray-600">
+          {wins === 0 && losses === 0 ? (
+            <div className="bg-gray-500 w-full" />
+          ) : (
+            <>
               <div className="bg-green-500" style={{ width: `${winRate}%` }} />
               <div className="bg-red-500" style={{ width: `${100 - winRate}%` }} />
-            </div>
-          </div>
-
-          <div className="flex justify-between items-center">
-            <span className="text-gray-400 text-sm flex items-center">Win Rate</span>
-            <span className="text-white font-bold">{winRate.toFixed(0)}%</span>
-          </div>
-
-          <div className="flex justify-between items-center">
-            <span className="text-gray-400 text-sm flex items-center">Total ROI</span>
-            <span className={`text-white font-bold ${profit / invested >= 0 ? "text-green-400" : "text-red-400"}`}>
-              {invested > 0 ? ((profit / invested) * 100).toFixed(0) : 0}%
-            </span>
-          </div>
-
-          <div className="flex justify-between items-center">
-            <span className="text-gray-400 text-sm flex items-center">Avg Hold Time</span>
-            <span className="text-white font-medium">{avgHoldTime.toFixed(0)} days</span>
-          </div>
-
-          <div className="flex justify-between items-center">
-            <span className="text-gray-400 text-sm flex items-center">Total Trades</span>
-            <span className="text-white font-medium">{totalTrades}</span>
-          </div>
+            </>
+          )}
         </div>
-      </div>
+      )}
+    </div>
+    <div className="flex justify-between items-center">
+      <span className="text-gray-400 text-sm flex items-center">Win Rate</span>
+      {loadingBalance || !account?.address ? (
+        <div className="h-5 w-12 bg-gray-700/50 rounded animate-pulse"></div>
+      ) : (
+        <span className="text-white font-bold">{winRate.toFixed(0)}%</span>
+      )}
+    </div>
+    <div className="flex justify-between items-center">
+      <span className="text-gray-400 text-sm flex items-center">Total ROI</span>
+      {loadingBalance || !account?.address ? (
+        <div className="h-5 w-12 bg-gray-700/50 rounded animate-pulse"></div>
+      ) : (
+        <span className={`font-bold ${profit / invested >= 0 ? "text-green-400" : "text-red-400"}`}>
+          {invested > 0 ? ((profit / invested) * 100).toFixed(0) : 0}%
+        </span>
+      )}
+    </div>
+    <div className="flex justify-between items-center">
+      <span className="text-gray-400 text-sm flex items-center">Avg Hold Time</span>
+      {loadingBalance || !account?.address ? (
+        <div className="h-5 w-16 bg-gray-700/50 rounded animate-pulse"></div>
+      ) : (
+        <span className="text-white font-medium">{avgHoldTime.toFixed(0)} days</span>
+      )}
+    </div>
+    <div className="flex justify-between items-center">
+      <span className="text-gray-400 text-sm flex items-center">Total Trades</span>
+      {loadingBalance || !account?.address ? (
+        <div className="h-5 w-12 bg-gray-700/50 rounded animate-pulse"></div>
+      ) : (
+        <span className="text-white font-medium">{totalTrades}</span>
+      )}
+    </div>
+  </div>
+</div>
     </div>
   );
 
   // Positions Tab Component
   const PositionsTab = () => (
     <div className="space-y-4">
-      <div className="bg-[#2f2f33] rounded-xl p-4 border-gray-700/20">
+      <div className="bg-[#2f2f33] rounded-xl p-6 border-gray-700/20">
         <h3 className="text-lg font-bold text-white mb-4">Your Positions ({userPositionsByMarket.length})</h3>
         {loadingPositions ? (
           <div className="text-center text-gray-400">Loading positions...</div>
         ) : userPositionsByMarket.length === 0 ? (
-          <div className="border-b border-gray-800 last:border-b-0 py-4 mb-2.5 first:pt-0 last:pb-0 flex items-center justify-center gap-2">
-            <Activity className="w-4 h-4 text-gray-400" />
-            <p className="text-gray-400 text-sm text-center">No active positions</p>
+          <div className="border-b border-gray-800 last:border-b-0 py-10 mb-2.5 first:pt-0 last:pb-0">
+            <div className="flex flex-col items-center justify-center gap-3">
+              <PackageOpen className="w-12 h-12 text-gray-600" />
+              <div className="text-center space-y-1">
+                <p className="text-gray-400 text-sm font-medium">No active positions</p>
+              </div>
+            </div>
           </div>
         ) : (
           userPositionsByMarket.map((pm) => {
@@ -337,7 +432,7 @@ const ProfilePage = () => {
               <Link
                 key={pm.marketId}
                 href={`/market/${slug}/${pm.marketId}`}
-                className="block border-b border-gray-800 last:border-b-0 py-4 first:pt-0 last:pb-0 hover:bg-gray-700/20 transition-colors cursor-pointer"
+                className="block border-b border-gray-700/20 last:border-b-0 p-4 rounded-md first:pt-0 last:pb-0 hover:bg-gray-700/20 transition-colors cursor-pointer"
               >
                 <div className="flex justify-between items-center mb-2">
                   <p className="text-white font-medium text-sm">{pm.marketDetails.title}</p>
@@ -406,21 +501,25 @@ const ProfilePage = () => {
   // Markets Tab Component
   const MarketsTab = () => (
     <div className="space-y-4">
-      <div className="bg-[#2f2f33] rounded-xl p-4 border-gray-700/20">
+      <div className="bg-[#2f2f33] rounded-xl p-6 border-gray-700/20">
         <h3 className="text-lg font-bold text-white mb-4">Created Markets</h3>
         {loadingMarkets ? (
           <div className="text-center text-gray-400">Loading markets...</div>
         ) : createdMarkets.length === 0 ? (
-          <div className="border-b border-gray-800 last:border-b-0 py-4 mb-2.5 first:pt-0 last:pb-0 flex items-center justify-center gap-2">
-            <Store className="w-4 h-4 text-gray-400" />
-            <p className="text-gray-400 text-sm text-center">No markets created yet</p>
+          <div className="border-b border-gray-800 last:border-b-0 py-10 mb-2.5 first:pt-0 last:pb-0">
+            <div className="flex flex-col items-center justify-center gap-3">
+              <PackageOpen className="w-12 h-12 text-gray-600" />
+              <div className="text-center space-y-1">
+                <p className="text-gray-400 text-sm font-medium">No markets created yet</p>
+              </div>
+            </div>
           </div>
         ) : (
           createdMarkets.map((market) => (
             <Link
               key={market.id}
               href={`/market/${generateSlug(market.title)}/${market.id}`}
-              className="block border-b border-gray-800 last:border-b-0 py-4 first:pt-0 last:pb-0 hover:bg-gray-700/20 transition-colors cursor-pointer"
+              className="block border-b border-gray-800 last:border-b-0 p-4 rounded-md first:pt-0 last:pb-0 hover:bg-gray-700/20 transition-colors cursor-pointer"
             >
               <p className="text-white font-medium text-sm mb-3">{market.title}</p>
               <div className="grid grid-cols-3 gap-4 text-sm">
@@ -481,7 +580,6 @@ const ProfilePage = () => {
             <div className="flex items-center gap-2 sm:gap-4">
               <div className="flex gap-1 sm:gap-2 items-center">
                 <WalletSelector />
-                {!account?.address && <span className="text-xs text-red-400">Wallet not connected</span>}
               </div>
             </div>
           </div>
@@ -490,10 +588,12 @@ const ProfilePage = () => {
       <div className="max-w-6xl px-4 sm:mx-auto mt-12 lg:pb-8 mx-auto py-6 pb-32">
         <div className="flex flex-col items-center gap-4 mb-6">
           <div className="relative">
-            <div className="w-24 h-24 rounded-full bg-gray-800 flex items-center justify-center border border-gray-700">
-              <User className="w-10 h-10 text-gray-400" />
+            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 p-0.5 shadow-lg shadow-green-500/20">
+              <div className="w-full h-full rounded-full bg-gray-800 flex items-center justify-center">
+                <User className="w-10 h-10 text-gray-300" />
+              </div>
             </div>
-            <div className="absolute -bottom-1 -right-1 bg-[#008259] rounded-full p-1">
+            <div className="absolute -bottom-1 -right-1 bg-[#008259] rounded-full p-1 shadow-lg shadow-green-500/30 ring-2 ring-gray-900">
               <CheckCircle className="w-4 h-4 text-white" />
             </div>
           </div>
@@ -508,8 +608,8 @@ const ProfilePage = () => {
         <div className="flex justify-center mb-6 pb-2 border-b border-gray-800">
           <div className="flex gap-1 w-full max-w-md">
             {[
-              { id: "summary", icon: BarChart3, label: "Summary" },
-              { id: "positions", icon: TrendingUp, label: "Positions" },
+              { id: "summary", icon: BriefcaseBusiness, label: "Summary" },
+              { id: "positions", icon: Presentation, label: "Positions" },
               { id: "markets", icon: MessageCircle, label: "Markets" },
             ].map((tab) => (
               <button

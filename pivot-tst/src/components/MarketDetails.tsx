@@ -224,7 +224,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       if (existingTotalShares === 0) {
         // New market case: use high slippage tolerance since price can change significantly
         maxSlippagePercent = 5000; // 50% slippage tolerance for new markets
-        console.log("New market detected, using high slippage tolerance");
+        console.log("New market: optimizing slippage");
       } else {
         // Existing market case: calculate price impact
         const totalShares = existingTotalShares + shares;
@@ -234,10 +234,10 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         maxSlippagePercent = Math.max(suggestedSlippage, 100);
       }
 
+      setIsOpen(false);
       await onBuyPositionClick(marketId as any, side, amount, maxSlippagePercent);
 
       // Reset & close
-      setIsOpen(false);
       setSide(null as any);
       setAmountUSDC("");
     } catch (error) {
