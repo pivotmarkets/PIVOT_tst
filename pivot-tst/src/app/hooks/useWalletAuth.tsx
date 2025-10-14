@@ -89,7 +89,7 @@ export const useWalletAuth = () => {
   const makeApiRequest = async (endpoint: string, data: any) => {
     const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
     const functionUrl = `${baseUrl}/functions/v1/${endpoint}`;
-
+  
     const response = await fetch(functionUrl, {
       method: "POST",
       headers: {
@@ -98,9 +98,28 @@ export const useWalletAuth = () => {
       },
       body: JSON.stringify(data),
     });
-
+  
+    // Check if response is OK
+    if (!response.ok) {
+      const text = await response.text(); // Get raw response for debugging
+      console.error("API request failed:", {
+        status: response.status,
+        statusText: response.statusText,
+        body: text,
+      });
+      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+    }
+  
+    // Check if response has content
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      const text = await response.text();
+      console.error("Invalid content type:", { contentType, body: text });
+      throw new Error("Response is not JSON");
+    }
+  
     const result = await response.json();
-
+  
     if (!result.success) throw new Error(result.error || "API request failed");
     return result;
   };
