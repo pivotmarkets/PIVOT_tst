@@ -36,13 +36,34 @@ import {
   Wallet,
 } from "lucide-react";
 import { useCallback, useState } from "react";
+import { useWalletAuth } from "@/app/hooks/useWalletAuth"; 
 
 export function WalletSelector() {
   const { account, connected, disconnect, wallet } = useWallet();
+  const { logout: authLogout, user } = useWalletAuth();
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  const closeDialog = useCallback(() => setIsDialogOpen(false), []);
+  const closeDialog = useCallback(async () => {
+    setIsDialogOpen(false);
+  }, []);
+
+  const handleDisconnect = useCallback(async () => {
+    try {
+      authLogout();
+      disconnect();
+      toast({
+        title: "Success",
+        description: "Disconnected wallet.",
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to disconnect wallet.",
+      });
+    }
+  }, [disconnect, authLogout, toast]);
 
   const copyAddress = useCallback(async () => {
     if (!account?.address.toStringLong()) return;
@@ -69,26 +90,16 @@ export function WalletSelector() {
             variant="default"
             className="group relative overflow-hidden bg-[#02834e] hover:bg-[#095435] font-medium px-4 py-2 rounded-lg hover:shadow-sm hover:shadow-black-900/10 focus:outline-none focus:ring-0 active:outline-none active:ring-0"
           >
-            <div className="relative flex items-center  gap-3">
-              {/* AI Profile Circle */}
+            <div className="relative flex items-center gap-3">
               <div className="relative">
-                <div className="w-6 h-6 rounded-full bg-none flex items-center justify-center">
                 <Wallet className="h-5 w-5 text-white" />
-                </div>
               </div>
-
-              {/* Address/Name */}
-              <span className="text-sm font-semibold">
-                {account?.ansName || truncateAddress(account?.address.toStringLong()) || "Unknown"}
-              </span>
-
               <ChevronDown className="h-4 w-4 text-slate-200 transition-transform group-hover:rotate-180 duration-200" />
             </div>
           </Button>
         </DropdownMenuTrigger>
 
         <DropdownMenuContent align="end" className="w-64 border-0 bg-[#2d2d33] shadow-2xl rounded-xl p-2">
-          {/* Profile Header */}
           <div className="px-3 py-3 mb-2">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-[#02834e] flex items-center justify-center shadow-lg">
@@ -97,7 +108,7 @@ export function WalletSelector() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-slate-200 dark:text-slate-100">
-                    {account?.ansName || "Creator"}
+                    {user?.username}
                   </span>
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                 </div>
@@ -137,10 +148,10 @@ export function WalletSelector() {
           <DropdownMenuSeparator className="my-2 bg-slate-200/50 dark:bg-slate-700/50" />
 
           <DropdownMenuItem
-            onSelect={disconnect}
+            onSelect={handleDisconnect}
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer"
           >
-            <div className="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-900/50 flex items-center justify-center ">
+            <div className="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-900/50 flex items-center justify-center">
               <LogOut className="h-4 w-4 text-red-600 dark:text-red-400" />
             </div>
             <span className="text-sm font-medium text-red-400 dark:text-slate-300">Disconnect</span>
@@ -151,13 +162,11 @@ export function WalletSelector() {
   ) : (
     <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
       <DialogTrigger asChild>
-        <Button className="group relative overflow-hidden bg-[#02834e] hover:bg-[#17513f] text-white font-semibold px-6 py-3 rounded-md transition-all ">
+        <Button className="group relative overflow-hidden bg-[#02834e] hover:bg-[#17513f] text-white font-semibold px-6 py-3 rounded-md transition-all">
           <div className="relative flex items-center gap-3">
-            {/* Wallet Icon with animation */}
             <div className="relative">
               <Wallet className="h-5 w-5" />
             </div>
-
             <span className="text-sm font-bold">Sign in</span>
           </div>
         </Button>
@@ -182,68 +191,68 @@ function ConnectWalletDialog({ close }: ConnectWalletDialogProps) {
 
   return (
     <DialogContent className="max-h-screen overflow-auto max-w-[95vw] sm:max-w-md w-full">
-    <AboutAptosConnect renderEducationScreen={renderEducationScreen}>
-      <DialogHeader>
-        <DialogTitle className="flex flex-col text-center leading-snug text-white">
-          {hasAptosConnectWallets ? (
-            <>
-              <span>Log in or sign up</span>
-              <span>with Social + Aptos Connect</span>
-            </>
-          ) : (
-            "Connect Wallet"
-          )}
-        </DialogTitle>
-      </DialogHeader>
-  
-      {hasAptosConnectWallets && (
-        <div className="flex flex-col gap-2 pt-3">
-          {aptosConnectWallets.map((wallet) => (
-            <AptosConnectWalletRow key={wallet.name} wallet={wallet} onConnect={close} />
-          ))}
-          <p className="flex gap-1 justify-center items-center text-gray-300 text-sm">
-            Learn more about{" "}
-            <AboutAptosConnect.Trigger className="flex gap-1 py-3 items-center text-white hover:text-blue-400 transition-colors">
-              Aptos Connect <ArrowRight size={16} />
-            </AboutAptosConnect.Trigger>
-          </p>
-          <AptosPrivacyPolicy className="flex flex-col items-center py-1">
-            <p className="text-xs leading-5 text-gray-300">
-              <AptosPrivacyPolicy.Disclaimer />{" "}
-              <AptosPrivacyPolicy.Link className="text-gray-300 underline underline-offset-4 hover:text-blue-400" />
-              <span className="text-gray-300">.</span>
+      <AboutAptosConnect renderEducationScreen={renderEducationScreen}>
+        <DialogHeader>
+          <DialogTitle className="flex flex-col text-center leading-snug text-white">
+            {hasAptosConnectWallets ? (
+              <>
+                <span>Log in or sign up</span>
+                <span>with Social + Aptos Connect</span>
+              </>
+            ) : (
+              "Connect Wallet"
+            )}
+          </DialogTitle>
+        </DialogHeader>
+
+        {hasAptosConnectWallets && (
+          <div className="flex flex-col gap-2 pt-3">
+            {aptosConnectWallets.map((wallet) => (
+              <AptosConnectWalletRow key={wallet.name} wallet={wallet} onConnect={close} />
+            ))}
+            <p className="flex gap-1 justify-center items-center text-gray-300 text-sm">
+              Learn more about{" "}
+              <AboutAptosConnect.Trigger className="flex gap-1 py-3 items-center text-white hover:text-blue-400 transition-colors">
+                Aptos Connect <ArrowRight size={16} />
+              </AboutAptosConnect.Trigger>
             </p>
-            <AptosPrivacyPolicy.PoweredBy className="flex gap-1.5 items-center text-xs leading-5 text-gray-300" />
-          </AptosPrivacyPolicy>
-          <div className="flex items-center gap-3 pt-4 text-gray-300">
-            <div className="h-px w-full bg-gray-600" />
-            Or
-            <div className="h-px w-full bg-gray-600" />
+            <AptosPrivacyPolicy className="flex flex-col items-center py-1">
+              <p className="text-xs leading-5 text-gray-300">
+                <AptosPrivacyPolicy.Disclaimer />{" "}
+                <AptosPrivacyPolicy.Link className="text-gray-300 underline underline-offset-4 hover:text-blue-400" />
+                <span className="text-gray-300">.</span>
+              </p>
+              <AptosPrivacyPolicy.PoweredBy className="flex gap-1.5 items-center text-xs leading-5 text-gray-300" />
+            </AptosPrivacyPolicy>
+            <div className="flex items-center gap-3 pt-4 text-gray-300">
+              <div className="h-px w-full bg-gray-600" />
+              Or
+              <div className="h-px w-full bg-gray-600" />
+            </div>
           </div>
-        </div>
-      )}
-  
-      <div className="flex flex-col gap-3 pt-3">
-        {availableWallets.map((wallet) => (
-          <WalletRow key={wallet.name} wallet={wallet} onConnect={close} />
-        ))}
-        {!!installableWallets.length && (
-          <Collapsible className="flex flex-col gap-3">
-            <CollapsibleTrigger asChild>
-              <Button size="sm" variant="default" className="gap-2 text-black hover:bg-[#e8eceb69]">
-                More wallets <ChevronDown />
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="flex flex-col gap-3">
-              {installableWallets.map((wallet) => (
-                <WalletRow key={wallet.name} wallet={wallet} onConnect={close} />
-              ))}
-            </CollapsibleContent>
-          </Collapsible>
         )}
-      </div>
-    </AboutAptosConnect>
-  </DialogContent>
+
+        <div className="flex flex-col gap-3 pt-3">
+          {availableWallets.map((wallet) => (
+            <WalletRow key={wallet.name} wallet={wallet} onConnect={close} />
+          ))}
+          {!!installableWallets.length && (
+            <Collapsible className="flex flex-col gap-3">
+              <CollapsibleTrigger asChild>
+                <Button size="sm" variant="default" className="gap-2 text-black hover:bg-[#e8eceb69]">
+                  More wallets <ChevronDown />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="flex flex-col gap-3">
+                {installableWallets.map((wallet) => (
+                  <WalletRow key={wallet.name} wallet={wallet} onConnect={close} />
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+        </div>
+      </AboutAptosConnect>
+    </DialogContent>
   );
 }
 
@@ -253,10 +262,21 @@ interface WalletRowProps {
 }
 
 function WalletRow({ wallet, onConnect }: WalletRowProps) {
+  const { isNewUser, showUsernameModal } = useWalletAuth();
+
+  const handleConnect = useCallback(() => {
+    if (isNewUser && showUsernameModal) {
+      // Username modal will be shown by parent component
+      onConnect?.();
+    } else {
+      onConnect?.();
+    }
+  }, [isNewUser, showUsernameModal, onConnect]);
+
   return (
     <WalletItem
       wallet={wallet}
-      onConnect={onConnect}
+      onConnect={handleConnect}
       className="flex items-center justify-between px-4 py-3 gap-4 border border-gray-700 rounded-md"
     >
       <div className="flex items-center gap-4">
@@ -279,8 +299,19 @@ function WalletRow({ wallet, onConnect }: WalletRowProps) {
 }
 
 function AptosConnectWalletRow({ wallet, onConnect }: WalletRowProps) {
+  const { isNewUser, showUsernameModal } = useWalletAuth();
+
+  const handleConnect = useCallback(() => {
+    if (isNewUser && showUsernameModal) {
+      // Username modal will be shown by parent component
+      onConnect?.();
+    } else {
+      onConnect?.();
+    }
+  }, [isNewUser, showUsernameModal, onConnect]);
+
   return (
-    <WalletItem wallet={wallet} onConnect={onConnect}>
+    <WalletItem wallet={wallet} onConnect={handleConnect}>
       <WalletItem.ConnectButton asChild>
         <Button
           size="lg"

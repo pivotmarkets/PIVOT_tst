@@ -658,6 +658,13 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                     />
                   </Link>
                 </h1>
+                {/* Leaderboard Link - Desktop Only */}
+              <Link href="/leaderboard" className="hidden lg:block group relative ml-6">
+                <span className="text-gray-300 transition-colors duration-200 font-medium">
+                  Leaderboard
+                </span>
+                <span className="absolute left-0 -bottom-0.5 h-[2px] w-0 bg-[#008259] transition-all duration-300 group-hover:w-full"></span>
+              </Link>
               </div>
 
               <div className="flex items-center gap-4">
@@ -770,6 +777,13 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   />
                 </Link>
               </h1>
+              {/* Leaderboard Link - Desktop Only */}
+              <Link href="/leaderboard" className="hidden lg:block group relative ml-6">
+                <span className="text-gray-300 transition-colors duration-200 font-medium">
+                  Leaderboard
+                </span>
+                <span className="absolute left-0 -bottom-0.5 h-[2px] w-0 bg-[#008259] transition-all duration-300 group-hover:w-full"></span>
+              </Link>
             </div>
 
             <div className="flex items-center gap-4">

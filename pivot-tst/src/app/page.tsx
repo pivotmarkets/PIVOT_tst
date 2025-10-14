@@ -24,6 +24,7 @@ import MarketDetailPage from "@/components/MarketDetails";
 import { PredictionMarketsResponse, QuickPredictionResponse } from "./serve";
 import MobileBottomNav from "@/components/ui/MobileBottomNav";
 import Link from "next/link";
+import { UsernameModal } from "@/components/ui/UsernameModal";
 
 interface AIAssistantPanelProps {
   isVisible: boolean;
@@ -396,7 +397,6 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
           <div className="flex items-center justify-between p-4 border-b border-[#2f2f33]/20 ">
             <div className="relative">
               <div className="flex items-center gap-2">
-                <ScanEyeIcon className="w-5 h-5 text-[#008259]" />
                 <h3 className="text-white font-medium">Trending Topics</h3>
                 {api.sessionId && <span className="text-xs text-[#008259]">●</span>}
                 <div className="relative group">
@@ -408,9 +408,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
                       isTooltipVisible || "opacity-0 invisible group-hover:opacity-100 group-hover:visible"
                     }`}
                   >
-                    <p className="leading-relaxed">
-                      Track real-time social trends to identify opportunities before they peak
-                    </p>
+                    <p className="leading-relaxed">Discover trending and viral content on social platforms</p>
                     <div className="absolute -top-2 left-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-gray-800"></div>
                   </div>
                 </div>
@@ -533,7 +531,6 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
         {/* Header */}
         <div className="bg-[#232328] px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2" onClick={toggleTooltip}>
-            <ScanEyeIcon className="w-5 h-5 text-[#008259]" />
             <h3 className="text-white font-medium text-lg">Trending Topics</h3>
             {api.sessionId && <span className="text-xs text-[#008259]">●</span>}
             <div className="relative group">
@@ -545,9 +542,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
                   isTooltipVisible || "opacity-0 invisible group-hover:opacity-100 group-hover:visible"
                 }`}
               >
-                <p className="leading-relaxed">
-                  Track real-time social trends to identify opportunities before they peak
-                </p>
+                <p className="leading-relaxed">Discover trending and viral content on social platforms</p>
                 <div className="absolute -top-2 left-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-gray-800"></div>
               </div>
             </div>
@@ -806,7 +801,8 @@ export default function PivotMarketApp() {
           animation: pulse 2s infinite;
         }
       `}</style>
-
+      {/* Username Modal - renders on top of everything */}
+      <UsernameModal />
       {/* Header */}
       <header className="bg-[#1a1a1e2c] animate-fadeInDown sticky top-0 z-40 overflow-hidden border-b border-b-[var(--Stroke-Dark,#2c2c2f)] px-3 sm:px-4 lg:px-4">
         <div className="max-w-7xl mx-auto py-3 sm:py-4">
@@ -820,6 +816,13 @@ export default function PivotMarketApp() {
                   className="ml-1 sm:ml-2 h-10 w-10 sm:h-12 sm:w-12 text-blue-400"
                 />
               </h1>
+              {/* Leaderboard Link - Desktop Only */}
+              <Link href="/leaderboard" className="hidden lg:block group relative ml-6">
+                <span className="text-gray-300 transition-colors duration-200 font-medium">
+                  Leaderboard
+                </span>
+                <span className="absolute left-0 -bottom-0.5 h-[2px] w-0 bg-[#008259] transition-all duration-300 group-hover:w-full"></span>
+              </Link>
             </div>
 
             {/* Right Side Actions */}
@@ -989,12 +992,14 @@ export default function PivotMarketApp() {
                 </div>
               </div>
             </div>
-            <Link
-              href="/profile"
-              className="bg-[#008259] hidden lg:flex hover:bg-[#006b46] text-white text-sm font-medium px-3 py-3 rounded-lg transition-colors"
-            >
-              My Bets
-            </Link>
+            {account?.address && (
+              <Link
+                href="/profile"
+                className="bg-[#008259] hidden lg:flex hover:bg-[#006b46] text-white text-sm font-medium px-3 py-3 rounded-lg transition-colors"
+              >
+                My Profile
+              </Link>
+            )}
           </div>
         </div>
 

@@ -1,7 +1,7 @@
 "use client";
 import React from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Home, ScanEye, User, TrendingUp, PlusCircle } from "lucide-react";
+import { Home, ScanEye, User, TrendingUp, PlusCircle, Trophy } from "lucide-react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 
 interface MobileBottomNavProps {
@@ -56,6 +56,15 @@ export default function MobileBottomNav({
         }),
     },
     {
+      id: "leaderboard",
+      label: "Leaderboard",
+      icon: Trophy,
+      path: "/leaderboard",
+      onClick: () => {
+        router.push("/leaderboard");
+      },
+    },
+    {
       id: "profile",
       label: account?.address ? "Profile" : "Sign In",
       icon: User,
@@ -76,6 +85,9 @@ export default function MobileBottomNav({
     }
     if (item.id === "insights") {
       return pathname?.startsWith(insightsPath) || isInsightsActive;
+    }
+    if (item.id === "leaderboard") {
+      return pathname?.startsWith("/leaderboard");
     }
     if (item.id === "profile") {
       return pathname?.startsWith("/profile");

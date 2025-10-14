@@ -4,10 +4,10 @@ import React, { useEffect, useState } from "react";
 import {
   BriefcaseBusiness,
   MessageCircle,
+  ChevronDown,
   CheckCircle,
   Presentation,
   Trophy,
-  ShieldCheck,
   User,
   PackageOpen,
 } from "lucide-react";
@@ -26,6 +26,7 @@ import {
   MarketDetails,
   Position,
 } from "@/app/view-functions/markets";
+import { useWalletAuth } from "@/app/hooks/useWalletAuth";
 
 const USDC_ASSET_ADDRESS: string = "0x69091fbab5f7d635ee7ac5098cf0c1efbe31d68fec0f2cd565e8d168daf52832";
 const config = new AptosConfig({ network: Network.TESTNET });
@@ -44,7 +45,6 @@ const ProfilePage = () => {
   const [wins, setWins] = useState(0);
   const [losses, setLosses] = useState(0);
   const [avgHoldTime, setAvgHoldTime] = useState(0);
-  const [totalTrades, setTotalTrades] = useState(0);
   const [createdMarkets, setCreatedMarkets] = useState<MarketDetails[]>([]);
   const [userPositionsByMarket, setUserPositionsByMarket] = useState<
     { marketId: number; positions: Position[]; marketDetails: MarketDetails }[]
@@ -54,7 +54,7 @@ const ProfilePage = () => {
   const [loadingMarkets, setLoadingMarkets] = useState(false);
 
   const { account } = useWallet();
-
+  const { user } = useWalletAuth();
   // Fetch USDC balance
   const fetchBalance = async () => {
     if (!account?.address) {
@@ -159,7 +159,7 @@ const ProfilePage = () => {
         const timeB = Number(b.timestamp || b.timestamp);
         return timeB - timeA;
       });
-      setTotalTrades(allTrades.length);
+      // setTotalTrades(allTrades.length);
       setLoadingTrades(false);
       console.log("loadingTrades", loadingTrades);
       console.log("First trade after proper flattening:", allTrades[0]);
@@ -201,12 +201,6 @@ const ProfilePage = () => {
         .filter((t) => t.tradeType === 1 || t.tradeType === 3)
         .reduce((sum, t) => sum + Number(t.amount) / 10 ** SHARES_DECIMALS, 0);
 
-      // Debug logging
-      console.log("Trade types in history:", [...new Set(allTrades.map((t) => t.tradeType))]);
-      console.log("Total outflows from trades:", totalOutflows);
-      console.log("Total invested from positions:", totalInvested);
-      console.log("All trades count:", allTrades.length);
-
       // Fallback: If no trade history for buys, use position cost basis as invested
       if (totalOutflows === 0 && totalInvested > 0) {
         totalOutflows = totalInvested;
@@ -220,7 +214,7 @@ const ProfilePage = () => {
       const totalProfit = realizedProfit + unrealizedPnl;
 
       // Use total outflows as invested amount (total spent including all fees)
-      setInvested(totalOutflows);
+      setInvested(totalOutflows * 2);
       setProfit(totalProfit);
       setNetWorth(balance + positionsValue);
 
@@ -263,148 +257,146 @@ const ProfilePage = () => {
   // Overview Tab Component
   const OverviewTab = () => (
     <div className="space-y-6">
-    <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl mb-5 p-6">
-  <div className="flex items-center justify-between mb-6">
-    <h2 className="text-xl font-bold text-white">Portfolio</h2>
-  </div>
-  <div className="mb-6">
-    <div className="flex items-center gap-2 mb-2">
-      <div className="rounded-full bg-blue-500 flex items-center justify-center">
-        <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-8 h-8 rounded-full" />
-      </div>
-      <div>
-        {loadingBalance || !account?.address ? (
-          <div className="h-9 w-32 bg-gray-700/50 rounded-lg animate-pulse mb-1"></div>
-        ) : (
-          <div className="text-3xl font-bold text-white">{netWorth.toFixed(3)}</div>
-        )}
-        <div className="text-sm text-gray-400">net worth</div>
-      </div>
-    </div>
-  </div>
-  <div className="grid grid-cols-4 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
-    <div className="text-center">
-      <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-1">
-        <div className="flex items-center justify-center flex-shrink-0">
-          <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+      <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl mb-5 p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold text-white">Portfolio</h2>
         </div>
-        {loadingBalance || !account?.address ? (
-          <div className="h-5 w-16 bg-gray-700/50 rounded animate-pulse"></div>
-        ) : (
-          <span className="text-white font-bold text-sm sm:text-base truncate">
-            {balance.toFixed(2)}
-          </span>
-        )}
-      </div>
-      <div className="text-xs text-gray-400">balance</div>
-    </div>
-    <div className="text-center">
-      <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-1">
-        <div className="flex items-center justify-center flex-shrink-0">
-          <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="rounded-full bg-blue-500 flex items-center justify-center">
+              <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-8 h-8 rounded-full" />
+            </div>
+            <div>
+              {loadingBalance || !account?.address ? (
+                <div className="h-9 w-32 bg-gray-700/50 rounded-lg animate-pulse mb-1"></div>
+              ) : (
+                <div className="text-3xl font-bold text-white">{netWorth.toFixed(2)}</div>
+              )}
+              <div className="text-sm text-gray-400">net worth</div>
+            </div>
+          </div>
         </div>
-        {loadingBalance || !account?.address ? (
-          <div className="h-5 w-16 bg-gray-700/50 rounded animate-pulse"></div>
-        ) : (
-          <span className="text-white font-bold text-sm sm:text-base truncate">{invested.toFixed(2)}</span>
-        )}
-      </div>
-      <div className="text-xs text-gray-400">invested</div>
-    </div>
-    <div className="text-center">
-      <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-1">
-        <div className="flex items-center justify-center flex-shrink-0">
-          <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+        <div className="grid grid-cols-4 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-1">
+              <div className="flex items-center justify-center flex-shrink-0">
+                <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+              </div>
+              {loadingBalance || !account?.address ? (
+                <div className="h-5 w-16 bg-gray-700/50 rounded animate-pulse"></div>
+              ) : (
+                <span className="text-white font-bold text-sm sm:text-base truncate">{balance.toFixed(2)}</span>
+              )}
+            </div>
+            <div className="text-xs text-gray-400">balance</div>
+          </div>
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-1">
+              <div className="flex items-center justify-center flex-shrink-0">
+                <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+              </div>
+              {loadingBalance || !account?.address ? (
+                <div className="h-5 w-16 bg-gray-700/50 rounded animate-pulse"></div>
+              ) : (
+                <span className="text-white font-bold text-sm sm:text-base truncate">{invested.toFixed(2)}</span>
+              )}
+            </div>
+            <div className="text-xs text-gray-400">invested</div>
+          </div>
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-1">
+              <div className="flex items-center justify-center flex-shrink-0">
+                <img src="/icons/usdc-logo.png" alt="USDC Logo" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+              </div>
+              {loadingBalance || !account?.address ? (
+                <div className="h-5 w-16 bg-gray-700/50 rounded animate-pulse"></div>
+              ) : (
+                <span
+                  className={`font-bold text-sm sm:text-base truncate ${profit >= 0 ? "text-green-400" : "text-red-400"}`}
+                >
+                  {profit >= 0 ? "+" : ""}
+                  {profit.toFixed(2)}
+                </span>
+              )}
+            </div>
+            <div className="text-xs text-gray-400">profit/loss</div>
+          </div>
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-1">
+              <div className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-orange-900/30 flex items-center justify-center flex-shrink-0">
+                <Trophy className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-yellow-500" />
+              </div>
+              <span className="text-white font-bold text-sm sm:text-base">1</span>
+            </div>
+            <div className="text-xs text-gray-400">Copper</div>
+          </div>
         </div>
-        {loadingBalance || !account?.address ? (
-          <div className="h-5 w-16 bg-gray-700/50 rounded animate-pulse"></div>
-        ) : (
-          <span
-            className={`font-bold text-sm sm:text-base truncate ${profit >= 0 ? "text-green-400" : "text-red-400"}`}
-          >
-            {profit >= 0 ? "+" : ""}
-            {profit.toFixed(2)}
-          </span>
-        )}
       </div>
-      <div className="text-xs text-gray-400">profit/loss</div>
-    </div>
-    <div className="text-center">
-      <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-1">
-        <div className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-orange-900/30 flex items-center justify-center flex-shrink-0">
-          <Trophy className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-orange-500" />
+      <div className="bg-[#2f2f33] rounded-xl p-6 border border-gray-700/20">
+        <h3 className="text-lg font-bold text-white mb-4">Stats</h3>
+        <div className="space-y-4">
+          <div>
+            <div className="flex justify-between text-sm mb-2">
+              <span className="text-gray-400 flex items-center">Win/Loss Record</span>
+              {loadingBalance || !account?.address ? (
+                <div className="h-5 w-16 bg-gray-700/50 rounded animate-pulse"></div>
+              ) : (
+                <span className="text-white font-medium">
+                  {wins}W - {losses}L
+                </span>
+              )}
+            </div>
+            {loadingBalance || !account?.address ? (
+              <div className="h-2 w-full bg-gray-700/50 rounded-full animate-pulse"></div>
+            ) : (
+              <div className="flex gap-1 h-2 rounded-full overflow-hidden bg-gray-600">
+                {wins === 0 && losses === 0 ? (
+                  <div className="bg-gray-500 w-full" />
+                ) : (
+                  <>
+                    <div className="bg-green-500" style={{ width: `${winRate}%` }} />
+                    <div className="bg-red-500" style={{ width: `${100 - winRate}%` }} />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-400 text-sm flex items-center">Win Rate</span>
+            {loadingBalance || !account?.address ? (
+              <div className="h-5 w-12 bg-gray-700/50 rounded animate-pulse"></div>
+            ) : (
+              <span className="text-white font-bold">{winRate.toFixed(0)}%</span>
+            )}
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-400 text-sm flex items-center">Total ROI</span>
+            {loadingBalance || !account?.address ? (
+              <div className="h-5 w-12 bg-gray-700/50 rounded animate-pulse"></div>
+            ) : (
+              <span className={`font-bold ${profit / invested >= 0 ? "text-green-400" : "text-red-400"}`}>
+                {invested > 0 ? ((profit / invested) * 100).toFixed(0) : 0}%
+              </span>
+            )}
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-400 text-sm flex items-center">Avg Hold Time</span>
+            {loadingBalance || !account?.address ? (
+              <div className="h-5 w-16 bg-gray-700/50 rounded animate-pulse"></div>
+            ) : (
+              <span className="text-white font-medium">{avgHoldTime.toFixed(0)} days</span>
+            )}
+          </div>
+          {/* <div className="flex justify-between items-center">
+            <span className="text-gray-400 text-sm flex items-center">Total Positions</span>
+            {loadingBalance || !account?.address ? (
+              <div className="h-5 w-12 bg-gray-700/50 rounded animate-pulse"></div>
+            ) : (
+              <span className="text-white font-medium">{totalTrades}</span>
+            )}
+          </div> */}
         </div>
-        <span className="text-white font-bold text-sm sm:text-base">10</span>
       </div>
-      <div className="text-xs text-gray-400">Bronze</div>
-    </div>
-  </div>
-</div>
-<div className="bg-[#2f2f33] rounded-xl p-6 border border-gray-700/20">
-  <h3 className="text-lg font-bold text-white mb-4">Stats</h3>
-  <div className="space-y-4">
-    <div>
-      <div className="flex justify-between text-sm mb-2">
-        <span className="text-gray-400 flex items-center">Win/Loss Record</span>
-        {loadingBalance || !account?.address ? (
-          <div className="h-5 w-16 bg-gray-700/50 rounded animate-pulse"></div>
-        ) : (
-          <span className="text-white font-medium">
-            {wins}W - {losses}L
-          </span>
-        )}
-      </div>
-      {loadingBalance || !account?.address ? (
-        <div className="h-2 w-full bg-gray-700/50 rounded-full animate-pulse"></div>
-      ) : (
-        <div className="flex gap-1 h-2 rounded-full overflow-hidden bg-gray-600">
-          {wins === 0 && losses === 0 ? (
-            <div className="bg-gray-500 w-full" />
-          ) : (
-            <>
-              <div className="bg-green-500" style={{ width: `${winRate}%` }} />
-              <div className="bg-red-500" style={{ width: `${100 - winRate}%` }} />
-            </>
-          )}
-        </div>
-      )}
-    </div>
-    <div className="flex justify-between items-center">
-      <span className="text-gray-400 text-sm flex items-center">Win Rate</span>
-      {loadingBalance || !account?.address ? (
-        <div className="h-5 w-12 bg-gray-700/50 rounded animate-pulse"></div>
-      ) : (
-        <span className="text-white font-bold">{winRate.toFixed(0)}%</span>
-      )}
-    </div>
-    <div className="flex justify-between items-center">
-      <span className="text-gray-400 text-sm flex items-center">Total ROI</span>
-      {loadingBalance || !account?.address ? (
-        <div className="h-5 w-12 bg-gray-700/50 rounded animate-pulse"></div>
-      ) : (
-        <span className={`font-bold ${profit / invested >= 0 ? "text-green-400" : "text-red-400"}`}>
-          {invested > 0 ? ((profit / invested) * 100).toFixed(0) : 0}%
-        </span>
-      )}
-    </div>
-    <div className="flex justify-between items-center">
-      <span className="text-gray-400 text-sm flex items-center">Avg Hold Time</span>
-      {loadingBalance || !account?.address ? (
-        <div className="h-5 w-16 bg-gray-700/50 rounded animate-pulse"></div>
-      ) : (
-        <span className="text-white font-medium">{avgHoldTime.toFixed(0)} days</span>
-      )}
-    </div>
-    <div className="flex justify-between items-center">
-      <span className="text-gray-400 text-sm flex items-center">Total Trades</span>
-      {loadingBalance || !account?.address ? (
-        <div className="h-5 w-12 bg-gray-700/50 rounded animate-pulse"></div>
-      ) : (
-        <span className="text-white font-medium">{totalTrades}</span>
-      )}
-    </div>
-  </div>
-</div>
     </div>
   );
 
@@ -420,7 +412,11 @@ const ProfilePage = () => {
             <div className="flex flex-col items-center justify-center gap-3">
               <PackageOpen className="w-12 h-12 text-gray-600" />
               <div className="text-center space-y-1">
-                <p className="text-gray-400 text-sm font-medium">No active positions</p>
+                {account?.address ? (
+                  <p className="text-gray-400 text-sm font-medium">No active positions</p>
+                ) : (
+                  <p className="text-gray-400 text-sm font-medium">Sign in to view positions</p>
+                )}
               </div>
             </div>
           </div>
@@ -432,7 +428,7 @@ const ProfilePage = () => {
               <Link
                 key={pm.marketId}
                 href={`/market/${slug}/${pm.marketId}`}
-                className="block border-b border-gray-700/20 last:border-b-0 p-4 rounded-md first:pt-0 last:pb-0 hover:bg-gray-700/20 transition-colors cursor-pointer"
+                className="block border-b border-gray-700/20 last:border-b-0 p-2 rounded-md first:pt-0 last:pb-0 hover:bg-gray-700/20 transition-colors cursor-pointer"
               >
                 <div className="flex justify-between items-center mb-2">
                   <p className="text-white font-medium text-sm">{pm.marketDetails.title}</p>
@@ -506,11 +502,15 @@ const ProfilePage = () => {
         {loadingMarkets ? (
           <div className="text-center text-gray-400">Loading markets...</div>
         ) : createdMarkets.length === 0 ? (
-          <div className="border-b border-gray-800 last:border-b-0 py-10 mb-2.5 first:pt-0 last:pb-0">
+          <div className="border-b border-gray-700/70 last:border-b-0 p-3 py-10 mb-2.5 first:pt-0 last:pb-0">
             <div className="flex flex-col items-center justify-center gap-3">
               <PackageOpen className="w-12 h-12 text-gray-600" />
               <div className="text-center space-y-1">
-                <p className="text-gray-400 text-sm font-medium">No markets created yet</p>
+                {account?.address ? (
+                  <p className="text-gray-400 text-sm font-medium">No markets created yet</p>
+                ) : (
+                  <p className="text-gray-400 text-sm font-medium">Sign in to view your created markets</p>
+                )}
               </div>
             </div>
           </div>
@@ -519,7 +519,7 @@ const ProfilePage = () => {
             <Link
               key={market.id}
               href={`/market/${generateSlug(market.title)}/${market.id}`}
-              className="block border-b border-gray-800 last:border-b-0 p-4 rounded-md first:pt-0 last:pb-0 hover:bg-gray-700/20 transition-colors cursor-pointer"
+              className="block border-b border-gray-700/20 last:border-b-0 p-2 rounded-md first:pt-0 last:pb-0 hover:bg-gray-700/20 transition-colors cursor-pointer"
             >
               <p className="text-white font-medium text-sm mb-3">{market.title}</p>
               <div className="grid grid-cols-3 gap-4 text-sm">
@@ -588,19 +588,26 @@ const ProfilePage = () => {
       <div className="max-w-6xl px-4 sm:mx-auto mt-12 lg:pb-8 mx-auto py-6 pb-32">
         <div className="flex flex-col items-center gap-4 mb-6">
           <div className="relative">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 p-0.5 shadow-lg shadow-green-500/20">
-              <div className="w-full h-full rounded-full bg-gray-800 flex items-center justify-center">
+            <div className="w-24 h-24 rounded-full  bg-gradient-to-br from-green-500 to-emerald-600 p-0.5 shadow-lg shadow-green-500/20">
+              <div className="w-full h-full rounded-full bg-gray-700/90 flex items-center justify-center">
                 <User className="w-10 h-10 text-gray-300" />
               </div>
             </div>
-            <div className="absolute -bottom-1 -right-1 bg-[#008259] rounded-full p-1 shadow-lg shadow-green-500/30 ring-2 ring-gray-900">
+            <div className="absolute -bottom-1 -right-1 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full p-1 shadow-lg shadow-green-500/30 ring-2 ring-emerald-900">
               <CheckCircle className="w-4 h-4 text-white" />
             </div>
           </div>
           <div className="text-center">
-            <div className="flex items-center justify-center gap-2">
-              <h1 className="text-2xl font-bold text-white">Creator</h1>
-              <ShieldCheck className="w-4 h-4 text-white" />
+            <div className="flex items-center align-middle justify-center gap-2">
+              <h1 className="text-2xl font-bold text-white">
+                {user?.username ? (
+                  user?.username
+                  
+                ) : (
+                  <div className="h-9 w-32 bg-gray-700/50 rounded-lg animate-pulse mb-1"></div>
+                )}
+              </h1>
+                <ChevronDown className="w-4 h-4 text-slate-200/70 mt-1" />
             </div>
             <p className="text-gray-400">{truncateAddress(account?.address.toStringLong())}</p>
           </div>
