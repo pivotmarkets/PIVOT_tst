@@ -10,7 +10,6 @@ import {
   SearchIcon,
   Loader,
   ScanEye,
-  ScanEyeIcon,
   LoaderCircle,
   InfoIcon,
 } from "lucide-react";
