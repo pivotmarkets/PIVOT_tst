@@ -91,9 +91,9 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const [activeTab, setActiveTab] = useState<"overview" | "positions" | "activity">("overview");
   const USDC_ASSET_ADDRESS: string = "0x69091fbab5f7d635ee7ac5098cf0c1efbe31d68fec0f2cd565e8d168daf52832";
 
-  const prevLengthRef = useRef<number>(0);
+  // const prevLengthRef = useRef<number>(0);
 
-  const { awardPoints, updateGameResult } = useWalletAuth();
+  const { awardPoints } = useWalletAuth();
   const [sellLoading] = useState<{ [key: string]: boolean }>({});
   const queryClient = useQueryClient();
   const config = new AptosConfig({ network: Network.TESTNET });

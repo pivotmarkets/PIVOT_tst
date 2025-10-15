@@ -364,6 +364,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
           timestamp: formatDistanceToNow(new Date(item.timestamp)) as any,
         }));
 
+        console.log("insights", insights);
         setMessages(insightMessages);
       } else {
         throw new Error("No trending news found in response");
