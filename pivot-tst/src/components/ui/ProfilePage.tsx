@@ -387,14 +387,14 @@ const ProfilePage = () => {
               <span className="text-white font-medium">{avgHoldTime.toFixed(0)} days</span>
             )}
           </div>
-          {/* <div className="flex justify-between items-center">
-            <span className="text-gray-400 text-sm flex items-center">Total Positions</span>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-400 text-sm flex items-center">Total Trades</span>
             {loadingBalance || !account?.address ? (
               <div className="h-5 w-12 bg-gray-700/50 rounded animate-pulse"></div>
             ) : (
-              <span className="text-white font-medium">{totalTrades}</span>
+              <span className="text-white font-medium">{user?.games_played}</span>
             )}
-          </div> */}
+          </div>
         </div>
       </div>
     </div>
@@ -576,6 +576,16 @@ const ProfilePage = () => {
                   />
                 </Link>
               </h1>
+              <span className="text-gray-300 hidden lg:flex ml-6 font-medium transition-colors relative pb-1">
+                Profile
+                <span className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-3/4 h-[2px] bg-[#008259]"></span>
+              </span>
+
+              {/* Leaderboard Link - Desktop Only */}
+              <Link href="/leaderboard" className="hidden lg:block group relative ml-6">
+                <span className="text-gray-300 transition-colors duration-200 font-medium">Leaderboard</span>
+                <span className="absolute left-0 -bottom-0.5 h-[2px] w-0 bg-[#008259] transition-all duration-300 group-hover:w-full"></span>
+              </Link>
             </div>
             <div className="flex items-center gap-2 sm:gap-4">
               <div className="flex gap-1 sm:gap-2 items-center">

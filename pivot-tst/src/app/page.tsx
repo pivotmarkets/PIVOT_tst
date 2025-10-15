@@ -364,7 +364,6 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
           timestamp: formatDistanceToNow(new Date(item.timestamp)) as any,
         }));
 
-        console.log("insights", insights);
         setMessages(insightMessages);
       } else {
         throw new Error("No trending news found in response");
@@ -803,7 +802,7 @@ export default function PivotMarketApp() {
       {/* Username Modal - renders on top of everything */}
       <UsernameModal />
       {/* Header */}
-      <header className="bg-[#1a1a1e2c] animate-fadeInDown sticky top-0 z-40 overflow-hidden border-b border-b-[var(--Stroke-Dark,#2c2c2f)] px-3 sm:px-4 lg:px-4">
+      <header className="bg-[#1a1a1e2c]   sticky top-0 z-40 overflow-hidden border-b border-b-[var(--Stroke-Dark,#2c2c2f)] px-3 sm:px-4 lg:px-4">
         <div className="max-w-7xl mx-auto py-3 sm:py-4">
           <div className="flex items-center justify-between">
             {/* Logo Section */}
@@ -815,12 +814,19 @@ export default function PivotMarketApp() {
                   className="ml-1 sm:ml-2 h-10 w-10 sm:h-12 sm:w-12 text-blue-400"
                 />
               </h1>
+
+
+                <span className="text-gray-300 hidden lg:flex font-medium ml-6 transition-colors relative pb-1">
+                  Explore
+                  <span className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-3/4 h-[2px] bg-[#008259]"></span>
+                </span>
+
               {/* Leaderboard Link - Desktop Only */}
               <Link href="/leaderboard" className="hidden lg:block group relative ml-6">
                 <span className="text-gray-300 transition-colors duration-200 font-medium">
                   Leaderboard
                 </span>
-                <span className="absolute left-0 -bottom-0.5 h-[2px] w-0 bg-[#008259] transition-all duration-300 group-hover:w-full"></span>
+                <span className="absolute rounded-lg left-2 -bottom-0.5 h-[2px] w-0 bg-[#008259] transition-all duration-300 group-hover:w-[80%]"></span>
               </Link>
             </div>
 

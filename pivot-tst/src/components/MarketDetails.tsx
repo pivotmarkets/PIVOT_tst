@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Activity,
   BarChart3,
@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
+import { useWalletAuth } from "@/app/hooks/useWalletAuth";
 import {
   getLatestTrades,
   getMarketAnalytics,
@@ -90,6 +91,9 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const [activeTab, setActiveTab] = useState<"overview" | "positions" | "activity">("overview");
   const USDC_ASSET_ADDRESS: string = "0x69091fbab5f7d635ee7ac5098cf0c1efbe31d68fec0f2cd565e8d168daf52832";
 
+  const prevLengthRef = useRef<number>(0);
+
+  const { awardPoints, updateGameResult } = useWalletAuth();
   const [sellLoading] = useState<{ [key: string]: boolean }>({});
   const queryClient = useQueryClient();
   const config = new AptosConfig({ network: Network.TESTNET });
@@ -107,12 +111,10 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         fetchPriceHistory();
         if (marketDetails) {
           setMarketDetails(marketDetails as any);
-          console.log("marketDetails:", marketDetails);
         }
         // 2. Only fetch user positions if wallet is connected
         if (account?.address) {
           const positions: any = await getUserPositionDetails(market.id, account.address.toString());
-          console.log("User positions:", positions);
           setUserPositions(positions || []);
         } else {
           // Clear positions when wallet disconnects
@@ -173,6 +175,40 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       refetchMissingData();
     }
   }, [marketDetails, userPositions, market?.id, account?.address]);
+
+
+
+  // useEffect(() => {
+  //   if (!userPositions || userPositions.length === 0) return;
+
+  //   const updateResult = async () => {
+  //     // Only update if a new position was added
+  //     if (userPositions.length > prevLengthRef.current) {
+  //       const newPosition = userPositions[userPositions.length - 1];
+  //       const pnl = calculatePnL(newPosition);
+  //       console.log("PnL for newly added position:", pnl);
+
+  //       try {
+  //         const result = await updateGameResult({
+  //           profit_loss: pnl.value,
+  //           game_type: "dropball",
+  //           bet_amount: parseFloat(amountUSDC),
+  //         });
+
+  //         console.log("Game result updated:", result);
+  //       } catch (error) {
+  //         console.error("Error updating game result:", error);
+  //       }
+
+  //       // Update ref after successful call
+  //       prevLengthRef.current = userPositions.length;
+  //     }
+  //   };
+
+  //   updateResult();
+  // }, [userPositions]);
+
+
   // helper
   const calculatePayout = (betSide: string, amount: number) => {
     if (!betSide || !amount || amount <= 0) return 0;
@@ -278,10 +314,8 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     const USDC_DECIMALS = 6;
     const outcomeValue = outcome === "YES" ? 1 : 2;
     const maxSlippage = Math.max(maxSlippageBasisPoints, 100);
-
+   
     try {
-      console.log("Max slippage (basis points):", maxSlippage);
-
       const response = await signAndSubmitTransaction(
         buyPosition({
           marketId,
@@ -297,7 +331,11 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       await refetchUSDCBalance();
 
       queryClient.refetchQueries();
-
+       await awardPoints({
+        points: amountUSDC,
+        action_type: `buy_position_${marketId}`,
+        description: `User claimed ${amountUSDC} pts for betting ${amountUSDC}`,
+      });
       // Correct success toast message
       toast.success(`Successfully bought ${outcome} position for ${amountUSDC.toFixed(2)} USDC`, {
         style: {
@@ -366,7 +404,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       .sort((a, b) => a.timestamp - b.timestamp);
   };
 
- const useUSDCBalance = () => {
+  const useUSDCBalance = () => {
     const { account } = useWallet();
     const [balance, setBalance] = useState<number>(0);
     const [loading, setLoading] = useState(false);
@@ -463,9 +501,6 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     try {
       const trades = await getLatestTrades(parseFloat(market.id), 100);
       const analytics = await getMarketAnalytics(market.id);
-
-      console.log("analytics", analytics);
-      console.log("latest trades", trades);
 
       // Set the analytics and trades data
       setMarketAnalytics(analytics as any);
@@ -658,13 +693,16 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                     />
                   </Link>
                 </h1>
-                {/* Leaderboard Link - Desktop Only */}
-              <Link href="/leaderboard" className="hidden lg:block group relative ml-6">
-                <span className="text-gray-300 transition-colors duration-200 font-medium">
-                  Leaderboard
+                <span className="text-gray-300 ml-6 font-medium transition-colors relative hidden lg:flex pb-1">
+                  Market
+                  <span className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-3/4 h-[2px] bg-[#008259]"></span>
                 </span>
-                <span className="absolute left-0 -bottom-0.5 h-[2px] w-0 bg-[#008259] transition-all duration-300 group-hover:w-full"></span>
-              </Link>
+
+                {/* Leaderboard Link - Desktop Only */}
+                <Link href="/leaderboard" className="hidden lg:block group relative ml-6">
+                  <span className="text-gray-300 transition-colors duration-200 font-medium">Leaderboard</span>
+                  <span className="absolute left-0 -bottom-0.5 h-[2px] w-0 bg-[#008259] transition-all duration-300 group-hover:w-full"></span>
+                </Link>
               </div>
 
               <div className="flex items-center gap-4">
@@ -749,7 +787,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   };
 
   const resolutionOutcome = marketDetails.resolved ? getResolutionOutcome(marketDetails.outcome) : null;
-  console.log("resolution", resolutionOutcome);
+
   const yesPrice = formatPrice(marketDetails.yesPrice);
   const noPrice = formatPrice(marketDetails.noPrice);
   const currentTime = Date.now() / 1000; // current epoch in seconds
@@ -777,11 +815,14 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                   />
                 </Link>
               </h1>
+              <span className="text-gray-300 hidden lg:flex ml-6 font-medium transition-colors relative pb-1">
+                Market
+                <span className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-3/4 h-[2px] bg-[#008259]"></span>
+              </span>
+
               {/* Leaderboard Link - Desktop Only */}
               <Link href="/leaderboard" className="hidden lg:block group relative ml-6">
-                <span className="text-gray-300 transition-colors duration-200 font-medium">
-                  Leaderboard
-                </span>
+                <span className="text-gray-300 transition-colors duration-200 font-medium">Leaderboard</span>
                 <span className="absolute left-0 -bottom-0.5 h-[2px] w-0 bg-[#008259] transition-all duration-300 group-hover:w-full"></span>
               </Link>
             </div>

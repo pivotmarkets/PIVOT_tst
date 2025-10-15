@@ -1,13 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import {
-  Trophy,
-  Medal,
-  Award,
-  CircleUser,
-  User,
-} from "lucide-react";
+import { Trophy, Medal, Award, CircleUser, User } from "lucide-react";
 import { useWalletAuth } from "@/app/hooks/useWalletAuth";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import Link from "next/link";
@@ -253,6 +247,12 @@ const MobileLeaderboardPage = ({ leaderboard }: any) => {
                   <img src="/icons/p-lg.png" alt="Pivot Logo" className="ml-1 sm:ml-2 h-10 w-10 sm:h-12 sm:w-12" />
                 </Link>
               </h1>
+              <Link href="/" className="hidden lg:block group relative ml-6">
+                <span className="text-gray-300 font-medium transition-colors relative inline-block pb-1">
+                  Explore
+                  <span className="absolute bottom-0 transition-all duration-300 left-1/2 transform -translate-x-1/2 w-0 group-hover:w-3/4 h-[2px] bg-[#008259]"></span>
+                </span>
+              </Link>
               {/* Leaderboard Link - Desktop Only - Active State */}
               <Link href="/leaderboard" className="hidden lg:block">
                 <span className="text-gray-300 font-medium ml-6 transition-colors relative inline-block pb-1">
@@ -274,22 +274,24 @@ const MobileLeaderboardPage = ({ leaderboard }: any) => {
       </header>
 
       {/* Main Content */}
-      <div className="flex-1 max-w-6xl px-4 sm:mx-auto w-full py-6 pb-32 sm:pb-8 mx-auto">
+      <div className="flex-1 max-w-6xl px-4 sm:mx-auto w-full py-6 mb-16 pb-32 sm:pb-8 mx-auto">
         {/* Top Section - Title & User Info */}
         <div className="flex flex-col items-center gap-4 mb-8">
           <div className="text-center">
             <h1 className="text-3xl font-bold text-white mb-2">Leaderboard</h1>
-            <p className="text-gray-400">Discover the top-ranked users globally</p>
+            <p className="text-gray-400">Discover the top-ranked traders globally</p>
           </div>
         </div>
 
         {/* Stats Cards */}
-        <div className="w-full flex gap-3 sm:gap-5 text-white p-4 sm:px-4 rounded-lg mb-8 bg-[#2f2f33] border border-gray-700/20">
+        <div className="w-full flex gap-2 text-white p-2 rounded-lg mb-8 bg-[#2f2f33] border border-gray-700/20">
           <div className="flex-1 flex flex-col bg-[#232328]/50 p-3 sm:p-4 rounded-lg items-center justify-center space-y-2 border border-gray-700/10">
             <User width={20} height={20} className="text-[#008259]" />
             <div className="text-center">
               <div className="text-[10px] sm:text-xs text-gray-400">You're Ranked</div>
-              <div className="text-lg sm:text-xl font-bold text-[#008259]">#{currentUserData?.rank || "-"}</div>
+              <div className="text-lg sm:text-xl font-bold text-[#008259]">
+                {account?.address ? `#${currentUserData?.rank || "0"}` : ""}
+              </div>
             </div>
           </div>
 
@@ -311,7 +313,7 @@ const MobileLeaderboardPage = ({ leaderboard }: any) => {
         </div>
 
         {/* Tab Navigation */}
-        <div className="bg-[#2f2f33] border border-gray-700/20 rounded-xl px-4 py-3 mb-8 flex-shrink-0">
+        <div className="bg-[#2f2f33] border border-gray-700/20 rounded-md px-1 py-1 mb-8 flex-shrink-0">
           <div className="flex space-x-1">
             {[
               { key: "daily", label: "Daily" },
