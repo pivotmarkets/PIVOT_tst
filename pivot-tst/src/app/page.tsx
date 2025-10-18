@@ -422,106 +422,139 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
           </div>
 
           <div
-            className="flex-1 overflow-y-auto p-4 space-y-4"
-            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-          >
-            {isLoading && messages.length === 0 && (
-              <div className="flex items-center justify-center p-8">
-                <LoaderCircle className="w-6 h-6 text-[#008259] animate-spin" />
-              </div>
-            )}
+  className="flex-1 overflow-y-auto p-4 space-y-4"
+  style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+>
+  {isLoading && messages.length === 0 && (
+    <div className="flex items-center justify-center p-8">
+      <LoaderCircle className="w-6 h-6 text-[#008259] animate-spin" />
+    </div>
+  )}
 
-            {messages.map((message: any, index) => (
-              <div key={index} className={`${message.type === "user" ? "ml-4" : "mr-4"}`}>
-                <div
-                  className={`rounded-lg p-3 ${
-                    message.type === "user"
-                      ? "bg-[#008259] text-white ml-auto max-w-[80%]"
-                      : message.type === "insight"
-                        ? "bg-[#008259]/20 border border-[#008259]/40 text-[#008259]"
-                        : "bg-[#2f2f33] text-gray-100 border border-[#008259]/20"
-                  }`}
+  {messages.map((message: any, index) => (
+    <div key={index} className={`${message.type === "user" ? "ml-4" : "mr-4"}`}>
+      <div
+        className={`rounded-lg p-3 break-words ${
+          message.type === "user"
+            ? "bg-[#008259] text-white ml-auto max-w-[80%]"
+            : message.type === "insight"
+              ? "bg-[#008259]/20 border border-[#008259]/40 text-[#008259]"
+              : "bg-[#2f2f33] text-gray-100 border border-[#008259]/20"
+        }`}
+      >
+        <div className="text-sm mb-1 break-words">
+          {message.content.split(/(https?:\/\/[^\s]+)/g).map((part: string, i: number) => {
+            if (part.match(/^https?:\/\//)) {
+              return (
+                <a
+                  key={i}
+                  href={part}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 mx-1 bg-[#008259]/20 hover:bg-[#008259]/30 rounded text-[#008259] transition-colors"
                 >
-                  <div className="text-sm mb-1">{message.content}</div>
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  <span className="text-xs font-medium">view</span>
+                </a>
+              );
+            }
+            return part;
+          })}
+        </div>
 
-                  {/* Render specific data based on message type */}
-                  {message.data && Array.isArray(message.data) && (
-                    <div className="mt-2 space-y-2">
-                      {message.data.slice(0, 3).map((item: any, idx: number) => (
-                        <div key={idx} className="bg-black/30 rounded p-2 text-xs border border-[#008259]/10">
-                          {item.title && <div className="font-medium text-[#008259] mb-1">{item.title}</div>}
-                          {item.question && <div className="font-medium text-[#008259] mb-1">{item.question}</div>}
-                          {item.summary && <div className="text-gray-300 mb-1">{item.summary}</div>}
-                          {item.description && <div className="text-gray-300 mb-1">{item.description}</div>}
-                          {item.ai_probability && (
-                            <div className="text-[#008259]">Probability: {(item.ai_probability * 100).toFixed(1)}%</div>
-                          )}
-                          {item.market_potential && (
-                            <div className="text-[#008259]/80">
-                              Market Potential: {(item.market_potential * 100).toFixed(1)}%
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Metadata and timestamp for insight messages */}
-                  {message.type === "insight" && message.metadata && (
-                    <div className="flex items-center justify-between mt-2 text-xs text-[#008259]/70">
-                      {/* Stats */}
-                      <div className="flex items-center gap-3">
-                        {/* Score */}
-                        <div className="flex items-center gap-1" title="Score">
-                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" />
-                          </svg>
-                          <span>{message.metadata.score}</span>
-                        </div>
-
-                        {/* Upvote Ratio */}
-                        <div className="flex items-center gap-1" title="Upvote Ratio">
-                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                            <path
-                              fillRule="evenodd"
-                              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                          <span>{(message.metadata.upvote_ratio * 100).toFixed(0)}%</span>
-                        </div>
-
-                        {/* Comments */}
-                        <div className="flex items-center gap-1" title="Comments">
-                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                            <path
-                              fillRule="evenodd"
-                              d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                          <span>{message.metadata.num_comments}</span>
-                        </div>
-                      </div>
-
-                      {/* Timestamp */}
-                      <div className="text-gray-400">{message.timestamp}</div>
-                    </div>
-                  )}
-
-                  {/* Timestamp for non-insight messages */}
-                  {message.type !== "insight" && <div className="text-xs text-gray-400 mt-2">{message.timestamp}</div>}
-                </div>
+        {/* Render specific data based on message type */}
+        {message.data && Array.isArray(message.data) && (
+          <div className="mt-2 space-y-2">
+            {message.data.slice(0, 3).map((item: any, idx: number) => (
+              <div key={idx} className="bg-black/30 rounded p-2 text-xs border border-[#008259]/10 break-words">
+                {item.title && (
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <div className="font-medium text-[#008259] break-words flex-1">{item.title}</div>
+                    {item.url && (
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-[#008259]/20 hover:bg-[#008259]/30 rounded text-[#008259] transition-colors flex-shrink-0"
+                        title="View on Reddit"
+                      >
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/>
+                        </svg>
+                        <span className="text-xs font-medium">reddit</span>
+                      </a>
+                    )}
+                  </div>
+                )}
+                {item.question && <div className="font-medium text-[#008259] mb-1 break-words">{item.question}</div>}
+                {item.summary && <div className="text-gray-300 mb-1 break-words">{item.summary}</div>}
+                {item.description && <div className="text-gray-300 mb-1 break-words">{item.description}</div>}
+                {item.ai_probability && (
+                  <div className="text-[#008259]">Probability: {(item.ai_probability * 100).toFixed(1)}%</div>
+                )}
+                {item.market_potential && (
+                  <div className="text-[#008259]/80">
+                    Market Potential: {(item.market_potential * 100).toFixed(1)}%
+                  </div>
+                )}
               </div>
             ))}
-
-            {isLoading && messages.length > 0 && (
-              <div className="flex items-center gap-2 text-[#008259] mr-4">
-                <Loader className="w-4 h-4 animate-spin" />
-                <span className="text-sm">Analyzing...</span>
-              </div>
-            )}
           </div>
+        )}
+
+        {/* Metadata and timestamp for insight messages */}
+        {message.type === "insight" && message.metadata && (
+          <div className="flex items-center justify-between mt-2 text-xs text-[#008259]/70 flex-wrap gap-2">
+            {/* Stats */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Score */}
+              <div className="flex items-center gap-1" title="Score">
+                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" />
+                </svg>
+                <span>{message.metadata.score}</span>
+              </div>
+
+              {/* Upvote Ratio */}
+              <div className="flex items-center gap-1" title="Upvote Ratio">
+                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span>{(message.metadata.upvote_ratio * 100).toFixed(0)}%</span>
+              </div>
+
+              {/* Comments */}
+              <div className="flex items-center gap-1" title="Comments">
+                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path
+                    fillRule="evenodd"
+                    d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span>{message.metadata.num_comments}</span>
+              </div>
+            </div>
+
+            {/* Timestamp */}
+            <div className="text-gray-400">{message.timestamp}</div>
+          </div>
+        )}
+
+        {/* Timestamp for non-insight messages */}
+        {message.type !== "insight" && <div className="text-xs text-gray-400 mt-2">{message.timestamp}</div>}
+      </div>
+    </div>
+  ))}
+
+
+</div>
         </div>
       </div>
 
