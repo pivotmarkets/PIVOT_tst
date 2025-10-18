@@ -91,7 +91,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "positions" | "activity">("overview");
   const USDC_ASSET_ADDRESS: string = "0x69091fbab5f7d635ee7ac5098cf0c1efbe31d68fec0f2cd565e8d168daf52832";
-
+  const { user } = useWalletAuth();
   // const prevLengthRef = useRef<number>(0);
 
   const { awardPoints } = useWalletAuth();
@@ -785,7 +785,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   };
 
   const resolutionOutcome = marketDetails.resolved ? getResolutionOutcome(marketDetails.outcome) : null;
-  const { user } = useWalletAuth();
+
   const yesPrice = formatPrice(marketDetails.yesPrice);
   const noPrice = formatPrice(marketDetails.noPrice);
   const currentTime = Date.now() / 1000; // current epoch in seconds
@@ -827,11 +827,13 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
             <div className="flex items-center gap-4">
               {user && (
-                <div className="flex items-center gap-1.5 px-3 py-2 bg-[#008259]/10 border border-[#008259]/30 rounded-lg">
-                  <PixelCoins className="w-4 h-4 text-[#008259]" />
-                  <span className="text-sm font-semibold text-[#008259]">{(user.points ?? 0).toLocaleString()}</span>
-                </div>
-              )}
+  <div className="flex items-center gap-1.5 px-3 py-2 bg-[#008259]/10 border border-[#008259]/30 rounded-lg">
+    <PixelCoins className="w-4 h-4 text-[#008259]" />
+    <span className="text-sm font-semibold text-[#008259]">
+      {(user.points ?? 0).toLocaleString()}
+    </span>
+  </div>
+)}
 
               <div className="flex gap-2 items-center flex-wrap">
                 <WalletSelector />
