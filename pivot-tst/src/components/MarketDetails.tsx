@@ -39,6 +39,7 @@ import { convertAmountFromHumanReadableToOnChain } from "@/utils/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import MobileBottomNav from "./ui/MobileBottomNav";
+import { PixelCoins } from "./ui";
 
 // Types
 interface Position {
@@ -176,8 +177,6 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     }
   }, [marketDetails, userPositions, market?.id, account?.address]);
 
-
-
   // useEffect(() => {
   //   if (!userPositions || userPositions.length === 0) return;
 
@@ -207,7 +206,6 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
   //   updateResult();
   // }, [userPositions]);
-
 
   // helper
   const calculatePayout = (betSide: string, amount: number) => {
@@ -314,7 +312,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     const USDC_DECIMALS = 6;
     const outcomeValue = outcome === "YES" ? 1 : 2;
     const maxSlippage = Math.max(maxSlippageBasisPoints, 100);
-   
+
     try {
       const response = await signAndSubmitTransaction(
         buyPosition({
@@ -331,7 +329,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       await refetchUSDCBalance();
 
       queryClient.refetchQueries();
-       await awardPoints({
+      await awardPoints({
         points: amountUSDC,
         action_type: `buy_position_${marketId}`,
         description: `User claimed ${amountUSDC} pts for betting ${amountUSDC}`,
@@ -787,7 +785,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
   };
 
   const resolutionOutcome = marketDetails.resolved ? getResolutionOutcome(marketDetails.outcome) : null;
-
+  const { user } = useWalletAuth();
   const yesPrice = formatPrice(marketDetails.yesPrice);
   const noPrice = formatPrice(marketDetails.noPrice);
   const currentTime = Date.now() / 1000; // current epoch in seconds
@@ -828,6 +826,13 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
             </div>
 
             <div className="flex items-center gap-4">
+              {user && (
+                <div className="flex items-center gap-1.5 px-3 py-2 bg-[#008259]/10 border border-[#008259]/30 rounded-lg">
+                  <PixelCoins className="w-4 h-4 text-[#008259]" />
+                  <span className="text-sm font-semibold text-[#008259]">{(user.points ?? 0).toLocaleString()}</span>
+                </div>
+              )}
+
               <div className="flex gap-2 items-center flex-wrap">
                 <WalletSelector />
               </div>

@@ -27,6 +27,7 @@ import {
   Position,
 } from "@/app/view-functions/markets";
 import { useWalletAuth } from "@/app/hooks/useWalletAuth";
+import { PixelCoins } from ".";
 
 const USDC_ASSET_ADDRESS: string = "0x69091fbab5f7d635ee7ac5098cf0c1efbe31d68fec0f2cd565e8d168daf52832";
 const config = new AptosConfig({ network: Network.TESTNET });
@@ -588,6 +589,13 @@ const ProfilePage = () => {
               </Link>
             </div>
             <div className="flex items-center gap-2 sm:gap-4">
+              {user && (
+                <div className="flex items-center gap-1.5 px-3 py-2 bg-[#008259]/10 border border-[#008259]/30 rounded-lg">
+                  <PixelCoins className="w-4 h-4 text-[#008259]" />
+                  <span className="text-sm font-semibold text-[#008259]">{(user.points ?? 0).toLocaleString()}</span>
+                </div>
+              )}
+
               <div className="flex gap-1 sm:gap-2 items-center">
                 <WalletSelector />
               </div>
@@ -612,12 +620,11 @@ const ProfilePage = () => {
               <h1 className="text-2xl font-bold text-white">
                 {user?.username ? (
                   user?.username
-                  
                 ) : (
                   <div className="h-9 w-32 bg-gray-700/50 rounded-lg animate-pulse mb-1"></div>
                 )}
               </h1>
-                <ChevronDown className="w-4 h-4 text-slate-200/70 mt-1" />
+              <ChevronDown className="w-4 h-4 text-slate-200/70 mt-1" />
             </div>
             <p className="text-gray-400">{truncateAddress(account?.address.toStringLong())}</p>
           </div>

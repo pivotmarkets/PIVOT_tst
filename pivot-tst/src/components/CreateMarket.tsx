@@ -13,6 +13,8 @@ import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 import { WalletSelector } from "./WalletSelector";
 import Link from "next/link";
 import MobileBottomNav from "./ui/MobileBottomNav";
+import { useWalletAuth } from "@/app/hooks/useWalletAuth";
+import { PixelCoins } from "./ui";
 
 interface Message {
   role: "user" | "ai";
@@ -521,6 +523,8 @@ const CreateMarket = () => {
     }
   };
 
+  const { user } = useWalletAuth();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#232328] via-[#1a1a1f] to-[#0f0f14]">
       {" "}
@@ -537,8 +541,8 @@ const CreateMarket = () => {
                 Create
                 <span className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-3/4 h-[2px] bg-[#008259]"></span>
               </span>
-                {/* Leaderboard Link - Desktop Only */}
-                <Link href="/leaderboard" className="hidden lg:block group relative ml-6">
+              {/* Leaderboard Link - Desktop Only */}
+              <Link href="/leaderboard" className="hidden lg:block group relative ml-6">
                 <span className="text-gray-300 transition-colors duration-200 font-medium">Leaderboard</span>
                 <span className="absolute left-0 -bottom-0.5 h-[2px] w-0 bg-[#008259] transition-all duration-300 group-hover:w-full"></span>
               </Link>
@@ -546,7 +550,13 @@ const CreateMarket = () => {
 
             {/* Right Side Actions */}
             <div className="flex items-center gap-2 sm:gap-4">
-              {/* Wallet Selector */}
+              {user && (
+                <div className="flex items-center gap-1.5 px-3 py-2 bg-[#008259]/10 border border-[#008259]/30 rounded-lg">
+                  <PixelCoins className="w-4 h-4 text-[#008259]" />
+                  <span className="text-sm font-semibold text-[#008259]">{(user.points ?? 0).toLocaleString()}</span>
+                </div>
+              )}
+
               <div className="flex gap-1 sm:gap-2 items-center">
                 <WalletSelector />
               </div>
@@ -554,7 +564,7 @@ const CreateMarket = () => {
           </div>
         </div>
       </header>
-      <div className="max-w-4xl mx-auto px-4 py-8 pb-22 lg:pb-0">
+      <div className="max-w-4xl mx-auto px-4 py-8 pb-24 lg:pb-0">
         {messages.length === 0 ? (
           /* Welcome State */
           <div className="text-center items-center space-y-8">
@@ -643,7 +653,7 @@ const CreateMarket = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.4 }}
               >
-                Greetings 👋
+                Greetings, {user?.username} 👋
               </motion.h2>
 
               <motion.p

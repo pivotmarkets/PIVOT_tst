@@ -29,7 +29,6 @@ import {
   ArrowRight,
   CheckCircle2,
   ChevronDown,
-  Circle,
   Copy,
   LogOut,
   User,
@@ -103,7 +102,7 @@ export function WalletSelector() {
           <div className="px-3 py-3 mb-2">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-[#02834e] flex items-center justify-center shadow-lg">
-                <Circle className="h-5 w-5 text-white" />
+                <User className="w-6 h-6 text-gray-300" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">

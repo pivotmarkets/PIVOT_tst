@@ -18,7 +18,7 @@ const MobileLeaderboardPage = ({ leaderboard }: any) => {
     weekly: [],
     allTime: [],
   });
-
+  const { user } = useWalletAuth();
   // Pixelated Coin SVG Icon
   const PixelCoins = (props: any) => (
     <svg viewBox="0 0 16 16" fill="currentColor" {...props} className={"w-4 h-4 " + props.className}>
@@ -264,7 +264,13 @@ const MobileLeaderboardPage = ({ leaderboard }: any) => {
 
             {/* Right Side Actions */}
             <div className="flex items-center gap-2 sm:gap-4">
-              {/* Wallet Selector */}
+              {user && (
+                <div className="flex items-center gap-1.5 px-3 py-2 bg-[#008259]/10 border border-[#008259]/30 rounded-lg">
+                  <PixelCoins className="w-4 h-4 text-[#008259]" />
+                  <span className="text-sm font-semibold text-[#008259]">{(user.points ?? 0).toLocaleString()}</span>
+                </div>
+              )}
+
               <div className="flex gap-1 sm:gap-2 items-center">
                 <WalletSelector />
               </div>
@@ -290,7 +296,7 @@ const MobileLeaderboardPage = ({ leaderboard }: any) => {
             <div className="text-center">
               <div className="text-[10px] sm:text-xs text-gray-400">You're Ranked</div>
               <div className="text-lg sm:text-xl font-bold text-[#008259]">
-                {account?.address ? `#${currentUserData?.rank || "0"}` : ""}
+                {account?.address ? `#${currentUserData?.rank || ""}` : ""}
               </div>
             </div>
           </div>
@@ -392,7 +398,6 @@ const MobileLeaderboardPage = ({ leaderboard }: any) => {
                   style={{ animationDelay: "0.4s" }}
                 ></div>
               </div>
-              <p className="text-gray-400 text-sm mt-4">Loading leaderboard...</p>
             </div>
           )}
         </div>
