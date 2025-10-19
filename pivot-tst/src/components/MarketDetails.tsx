@@ -311,7 +311,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     const USDC_DECIMALS = 6;
     const outcomeValue = outcome === "YES" ? 1 : 2;
     const maxSlippage = Math.max(maxSlippageBasisPoints, 100);
-    
+
     try {
       const response = await signAndSubmitTransaction(
         buyPosition({
@@ -321,14 +321,14 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
           maxSlippage: maxSlippage,
         }),
       );
-      
+
       await aptosClient().waitForTransaction({
         transactionHash: response.hash,
       });
-      
+
       await refetchUSDCBalance();
       queryClient.refetchQueries();
-      
+
       // Award points asynchronously
       awardPoints({
         points: amountUSDC,
@@ -337,7 +337,7 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
       }).catch((error) => {
         console.error("Failed to award points (non-critical):", error);
       });
-      
+
       // Correct success toast message
       toast.success(`Successfully bought ${outcome} position for ${amountUSDC.toFixed(2)} USDC`, {
         style: {
@@ -348,18 +348,18 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         },
         duration: 6000,
       });
-      
+
       // Refetch market data after buying
       const marketDetails = await getMarketDetails(market.id);
       fetchPriceHistory();
-      
+
       if (marketDetails) {
         setMarketDetails(marketDetails as any);
       }
-      
+
       const positions: any = await getUserPositionDetails(market.id, account.address.toString());
       setUserPositions(positions || []);
-      
+
       return response;
     } catch (error) {
       console.error("Error buying position:", error);
@@ -831,13 +831,11 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
 
             <div className="flex items-center gap-4">
               {user && (
-  <div className="flex items-center gap-1.5 px-3 py-2 bg-[#008259]/10 border border-[#008259]/30 rounded-lg">
-    <PixelCoins className="w-4 h-4 text-[#008259]" />
-    <span className="text-sm font-semibold text-[#008259]">
-      {(user.points ?? 0).toLocaleString()}
-    </span>
-  </div>
-)}
+                <div className="flex items-center gap-1.5 px-3 py-2 bg-[#008259]/10 border border-[#008259]/30 rounded-lg">
+                  <PixelCoins className="w-4 h-4 text-[#008259]" />
+                  <span className="text-sm font-semibold text-[#008259]">{(user.points ?? 0).toLocaleString()}</span>
+                </div>
+              )}
 
               <div className="flex gap-2 items-center flex-wrap">
                 <WalletSelector />
@@ -1597,169 +1595,151 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
                 </div>
 
                 {/* Individual Positions */}
-                {userPositions
-                  .filter((position) => {
-                    // Filter logic remains the same
-                    if (!marketDetails.resolved) {
-                      return true;
-                    }
-                    const getResolutionOutcome = (outcome: { vec: any }) => {
-                      if (!outcome || !outcome.vec) return null;
-                      return outcome.vec === "0x01" ? 1 : 0;
-                    };
-                    const marketResolution = marketDetails.resolved
-                      ? getResolutionOutcome(marketDetails.outcome)
-                      : null;
-                    const positionWon = marketDetails.resolved && position.outcome === marketResolution;
-                    return positionWon;
-                  })
-                  .map((position, index) => {
-                    const claimKey = `${marketDetails.id}-${position.id}`;
-                    const isClaimed = claimedPositions.has(claimKey);
-                    const pnl = calculatePnL(position);
-                    const sellKey = `${position.outcome}-${position.user}`;
-                    const isLoading = sellLoading[sellKey];
-                    const outcomeText = position.outcome === 1 ? "YES" : "NO";
-                    const currentPrice = position.outcome === 1 ? yesPrice : noPrice;
+                {userPositions.map((position, index) => {
+                  const claimKey = `${marketDetails.id}-${position.id}`;
+                  const isClaimed = claimedPositions.has(claimKey);
+                  const pnl = calculatePnL(position);
+                  const sellKey = `${position.outcome}-${position.user}`;
+                  const isLoading = sellLoading[sellKey];
+                  const outcomeText = position.outcome === 1 ? "YES" : "NO";
+                  const currentPrice = position.outcome === 1 ? yesPrice : noPrice;
 
-                    const getResolutionOutcome = (outcome: { vec: any }) => {
-                      if (!outcome || !outcome.vec) return null;
-                      return outcome.vec === "0x01" ? 1 : 0;
-                    };
+                  const getResolutionOutcome = (outcome: { vec: any }) => {
+                    if (!outcome || !outcome.vec) return null;
+                    return outcome.vec === "0x01" ? 1 : 0;
+                  };
 
-                    const marketResolution = marketDetails.resolved
-                      ? getResolutionOutcome(marketDetails.outcome)
-                      : null;
-                    const positionWon = marketDetails.resolved && position.outcome === marketResolution;
+                  const marketResolution = marketDetails.resolved ? getResolutionOutcome(marketDetails.outcome) : null;
+                  const positionWon = marketDetails.resolved && position.outcome === marketResolution;
 
-                    return (
-                      <div key={index} className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
-                        {/* Mobile-first header layout */}
-                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
-                          {/* Position info */}
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={`px-3 py-1 rounded-full text-sm font-semibold flex-shrink-0 ${
-                                position.outcome === 1
-                                  ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                                  : "bg-red-500/20 text-red-400 border border-red-500/30"
-                              }`}
-                            >
-                              {outcomeText}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <h4 className="text-base sm:text-lg font-semibold text-white truncate">
-                                {formatShares(position.shares)} shares
-                              </h4>
-                              <p className="text-sm text-gray-400">Bought at {(position.avgPrice / 100).toFixed(1)}¢</p>
-                            </div>
+                  return (
+                    <div key={index} className="bg-[#2f2f33] border border-gray-700/20 rounded-xl p-4 sm:p-6">
+                      {/* Mobile-first header layout */}
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
+                        {/* Position info */}
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`px-3 py-1 rounded-full text-sm font-semibold flex-shrink-0 ${
+                              position.outcome === 1
+                                ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                                : "bg-red-500/20 text-red-400 border border-red-500/30"
+                            }`}
+                          >
+                            {outcomeText}
                           </div>
-
-                          {/* Action button - full width on mobile, auto on desktop */}
-                          <div className="w-full sm:w-auto sm:flex-shrink-0">
-                            {!marketDetails.resolved && !isClosed ? (
-                              <button
-                                onClick={() =>
-                                  onSellPositionClick(
-                                    marketDetails.id,
-                                    position.id,
-                                    position.shares,
-                                    Math.floor(currentPrice * 10000),
-                                  )
-                                }
-                                disabled={isLoading}
-                                className={`w-full sm:w-auto px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
-                                  isLoading
-                                    ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                                    : "bg-[#008259] hover:bg-emerald-500/70 text-white"
-                                }`}
-                              >
-                                {isLoading ? (
-                                  <>
-                                    <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-                                    Selling...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Minus className="w-4 h-4" />
-                                    Sell
-                                  </>
-                                )}
-                              </button>
-                            ) : marketDetails.resolved && positionWon ? (
-                              <button
-                                onClick={() => onClaimWinningsClick(marketDetails.id, position.id)}
-                                disabled={isLoading}
-                                className={`w-full sm:w-auto px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
-                                  isLoading
-                                    ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                                    : "bg-emerald-600 hover:bg-green-800/80 text-white"
-                                }`}
-                              >
-                                {isClaimed ? (
-                                  <>
-                                    <Trophy className="w-4 h-4" />
-                                    Claimed
-                                  </>
-                                ) : isLoading ? (
-                                  <>
-                                    <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-                                    Claiming...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Trophy className="w-4 h-4" />
-                                    Claim Winnings
-                                  </>
-                                )}
-                              </button>
-                            ) : marketDetails.resolved && !positionWon ? (
-                              <div className="w-full sm:w-auto px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium text-center">
-                                Lost Bet
-                              </div>
-                            ) : (
-                              <div className="w-full sm:w-auto px-4 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm font-medium text-center">
-                                Market Closed
-                              </div>
-                            )}
+                          <div className="min-w-0 flex-1">
+                            <h4 className="text-base sm:text-lg font-semibold text-white truncate">
+                              {formatShares(position.shares)} shares
+                            </h4>
+                            <p className="text-sm text-gray-400">Bought at {(position.avgPrice / 100).toFixed(1)}¢</p>
                           </div>
                         </div>
 
-                        {/* Stats grid - 2 columns on mobile, 4 on desktop */}
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-sm mb-4">
-                          <div className="text-center sm:text-left">
-                            <div className="text-gray-400 text-xs sm:text-sm mb-1">Current Price</div>
-                            <div className="text-white font-semibold text-sm sm:text-base">
-                              {(currentPrice * 100).toFixed(1)}¢
-                            </div>
-                          </div>
-                          <div className="text-center sm:text-left">
-                            <div className="text-gray-400 text-xs sm:text-sm mb-1">Current Value</div>
-                            <div className="text-white font-semibold text-sm sm:text-base">
-                              ${calculatePositionValue(position).toFixed(2)}
-                            </div>
-                          </div>
-                          <div className="text-center sm:text-left">
-                            <div className="text-gray-400 text-xs sm:text-sm mb-1">P&L</div>
-                            <div
-                              className={`font-semibold text-sm sm:text-base ${pnl.value >= 0 ? "text-green-400" : "text-red-400"}`}
+                        {/* Action button - full width on mobile, auto on desktop */}
+                        <div className="w-full sm:w-auto sm:flex-shrink-0">
+                          {!marketDetails.resolved && !isClosed ? (
+                            <button
+                              onClick={() =>
+                                onSellPositionClick(
+                                  marketDetails.id,
+                                  position.id,
+                                  position.shares,
+                                  Math.floor(currentPrice * 10000),
+                                )
+                              }
+                              disabled={isLoading}
+                              className={`w-full sm:w-auto px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
+                                isLoading
+                                  ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                                  : "bg-[#008259] hover:bg-emerald-500/70 text-white"
+                              }`}
                             >
-                              {pnl.value >= 0 ? "+" : ""}${pnl.value.toFixed(2)}
-                            </div>
-                          </div>
-                          <div className="text-center sm:text-left">
-                            <div className="text-gray-400 text-xs sm:text-sm mb-1">P&L %</div>
-                            <div
-                              className={`font-semibold text-sm sm:text-base ${pnl.percentage >= 0 ? "text-green-400" : "text-red-400"}`}
+                              {isLoading ? (
+                                <>
+                                  <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                                  Selling...
+                                </>
+                              ) : (
+                                <>
+                                  <Minus className="w-4 h-4" />
+                                  Sell
+                                </>
+                              )}
+                            </button>
+                          ) : marketDetails.resolved && positionWon ? (
+                            <button
+                              onClick={() => onClaimWinningsClick(marketDetails.id, position.id)}
+                              disabled={isLoading}
+                              className={`w-full sm:w-auto px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
+                                isLoading
+                                  ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                                  : "bg-emerald-600 hover:bg-green-800/80 text-white"
+                              }`}
                             >
-                              {pnl.percentage >= 0 ? "+" : ""}
-                              {pnl.percentage.toFixed(1)}%
+                              {isClaimed ? (
+                                <>
+                                  <Trophy className="w-4 h-4" />
+                                  Claimed
+                                </>
+                              ) : isLoading ? (
+                                <>
+                                  <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                                  Claiming...
+                                </>
+                              ) : (
+                                <>
+                                  <Trophy className="w-4 h-4" />
+                                  Claim Winnings
+                                </>
+                              )}
+                            </button>
+                          ) : marketDetails.resolved && !positionWon ? (
+                            <div className="w-full sm:w-auto px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium text-center">
+                              Lost Bet
                             </div>
+                          ) : (
+                            <div className="w-full sm:w-auto px-4 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm font-medium text-center">
+                              Market Closed
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Stats grid - 2 columns on mobile, 4 on desktop */}
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-sm mb-4">
+                        <div className="text-center sm:text-left">
+                          <div className="text-gray-400 text-xs sm:text-sm mb-1">Current Price</div>
+                          <div className="text-white font-semibold text-sm sm:text-base">
+                            {(currentPrice * 100).toFixed(1)}¢
+                          </div>
+                        </div>
+                        <div className="text-center sm:text-left">
+                          <div className="text-gray-400 text-xs sm:text-sm mb-1">Current Value</div>
+                          <div className="text-white font-semibold text-sm sm:text-base">
+                            ${calculatePositionValue(position).toFixed(2)}
+                          </div>
+                        </div>
+                        <div className="text-center sm:text-left">
+                          <div className="text-gray-400 text-xs sm:text-sm mb-1">P&L</div>
+                          <div
+                            className={`font-semibold text-sm sm:text-base ${pnl.value >= 0 ? "text-green-400" : "text-red-400"}`}
+                          >
+                            {pnl.value >= 0 ? "+" : ""}${pnl.value.toFixed(2)}
+                          </div>
+                        </div>
+                        <div className="text-center sm:text-left">
+                          <div className="text-gray-400 text-xs sm:text-sm mb-1">P&L %</div>
+                          <div
+                            className={`font-semibold text-sm sm:text-base ${pnl.percentage >= 0 ? "text-green-400" : "text-red-400"}`}
+                          >
+                            {pnl.percentage >= 0 ? "+" : ""}
+                            {pnl.percentage.toFixed(1)}%
                           </div>
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
