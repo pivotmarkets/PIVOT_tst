@@ -393,7 +393,7 @@ const ProfilePage = () => {
             {loadingBalance || !account?.address ? (
               <div className="h-5 w-12 bg-gray-700/50 rounded animate-pulse"></div>
             ) : (
-              <span className="text-white font-medium">{user?.games_played}</span>
+              <span className="text-white font-medium">{user?.games_played ?? 0}</span>
             )}
           </div>
         </div>

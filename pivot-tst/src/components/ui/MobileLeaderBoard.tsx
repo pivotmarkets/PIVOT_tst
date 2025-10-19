@@ -1,18 +1,24 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Trophy, Medal, Award, CircleUser, User } from "lucide-react";
+import { Trophy, Medal, Award, CircleUser, User, CheckCircle2, Twitter } from "lucide-react";
 import { useWalletAuth } from "@/app/hooks/useWalletAuth";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import Link from "next/link";
 import MobileBottomNav from "./MobileBottomNav";
 import { WalletSelector } from "../WalletSelector";
+import { toast } from "sonner";
 
 const MobileLeaderboardPage = ({ leaderboard }: any) => {
   const [activeTab, setActiveTab] = useState("daily");
   const { account } = useWallet();
   const address = account?.address.toStringLong();
+  const [completedTasks, setCompletedTasks] = useState({
+    twitter: false,
+    telegram: false,
+  });
   const { getLeaderboard } = useWalletAuth();
+  const { awardPoints } = useWalletAuth();
   const [leaderboardData, setLeaderboardData] = useState<any>({
     daily: [],
     weekly: [],
@@ -164,49 +170,82 @@ const MobileLeaderboardPage = ({ leaderboard }: any) => {
       {
         level: 1,
         title: "Copper",
-        badge: <div className="w-4 h-4 rounded-full bg-orange-700 border border-orange-600"></div>,
+        badge: (
+          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-orange-900/30 flex items-center justify-center flex-shrink-0">
+            <Trophy className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-yellow-500" />
+          </div>
+        ),
       },
       {
         level: 2,
         title: "Bronze",
-        badge: <div className="w-4 h-4 rounded-full bg-amber-700 border border-amber-600"></div>,
+        badge: (
+          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+            <Trophy className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-600" />
+          </div>
+        ),
       },
       {
         level: 3,
         title: "Silver",
-        badge: <div className="w-4 h-4 rounded-full bg-gray-300 border border-gray-400"></div>,
+        badge: (
+          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-gray-700/30 flex items-center justify-center flex-shrink-0">
+            <Trophy className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-300" />
+          </div>
+        ),
       },
       {
         level: 4,
         title: "Gold",
-        badge: <div className="w-4 h-4 rounded-full bg-yellow-400 border border-yellow-500"></div>,
+        badge: (
+          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-yellow-900/30 flex items-center justify-center flex-shrink-0">
+            <Trophy className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-yellow-400" />
+          </div>
+        ),
       },
       {
         level: 5,
         title: "Platinum",
-        badge: <div className="w-4 h-4 rounded-full bg-gray-100 border border-gray-300"></div>,
+        badge: (
+          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-slate-700/30 flex items-center justify-center flex-shrink-0">
+            <Trophy className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-200" />
+          </div>
+        ),
       },
       {
         level: 6,
         title: "Emerald",
-        badge: <div className="w-4 h-4 rounded-sm bg-emerald-500 border border-emerald-600 transform rotate-45"></div>,
+        badge: (
+          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+            <Trophy className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-400" />
+          </div>
+        ),
       },
       {
         level: 7,
         title: "Ruby",
-        badge: <div className="w-4 h-4 rounded-sm bg-red-500 border border-red-600 transform rotate-45"></div>,
+        badge: (
+          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-red-900/30 flex items-center justify-center flex-shrink-0">
+            <Trophy className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-red-400" />
+          </div>
+        ),
       },
       {
         level: 8,
         title: "Sapphire",
-        badge: <div className="w-4 h-4 rounded-sm bg-blue-600 border border-blue-700 transform rotate-45"></div>,
+        badge: (
+          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+            <Trophy className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-400" />
+          </div>
+        ),
       },
       {
         level: 9,
         title: "Diamond",
         badge: (
-          <div className="w-4 h-4 bg-blue-100 border border-blue-300 transform rotate-45 relative">
-            <div className="absolute inset-1 bg-gradient-to-br from-blue-200 to-cyan-200 transform -rotate-45"></div>
+          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-cyan-900/30 flex items-center justify-center flex-shrink-0 relative">
+            <Trophy className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-cyan-300" />
+            <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/20 to-blue-400/20 rounded"></div>
           </div>
         ),
       },
@@ -214,8 +253,9 @@ const MobileLeaderboardPage = ({ leaderboard }: any) => {
         level: 10,
         title: "Obsidian",
         badge: (
-          <div className="w-4 h-4 bg-black border border-gray-700 transform rotate-45 relative">
-            <div className="absolute inset-0.5 bg-gradient-to-br from-purple-900 to-black transform -rotate-45"></div>
+          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-black/50 flex items-center justify-center flex-shrink-0 relative border border-purple-700/30">
+            <Trophy className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-purple-400" />
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-black/40 rounded"></div>
           </div>
         ),
       },
@@ -234,6 +274,39 @@ const MobileLeaderboardPage = ({ leaderboard }: any) => {
   const currentUserData = currentData.find((player: { isCurrentUser: boolean }) => player.isCurrentUser === true);
 
   const currentLevel = getLevel(currentUserData?.games_played);
+
+  const handleTaskComplete = (task: "twitter" | "telegram") => {
+    // Open the respective link
+    if (task === "twitter") {
+      window.open("https://x.com/intent/follow?screen_name=pivotmarketsHQ", "_blank");
+    } else {
+      window.open("https://t.me/pivotmarkets", "_blank");
+    }
+
+    // Mark task as completed (in production, verify this on backend)
+    setCompletedTasks((prev: any) => ({ ...prev, [task]: true }));
+
+    // Award points asynchronously
+    const taskPoints = task === "twitter" ? 100 : 100; // Adjust points when needed
+    awardPoints({
+      points: taskPoints,
+      action_type: `social_task_${task}`,
+      description: `User earned ${taskPoints} pts for completing ${task} task`,
+    }).catch((error) => {
+      console.error(`Failed to award points for ${task} task (non-critical):`, error);
+    });
+
+    // Optional: Show success toast
+    toast.success(`You earned ${taskPoints} points for following on ${task === "twitter" ? "X" : "Telegram"}!`, {
+      style: {
+        backgroundColor: "#064e3b",
+        color: "#6ee7b7",
+        fontWeight: "bold",
+        border: "1px solid #10b981",
+      },
+      duration: 4000,
+    });
+  };
 
   return (
     <div className="min-h-screen bg-[#232328] flex flex-col">
@@ -291,12 +364,18 @@ const MobileLeaderboardPage = ({ leaderboard }: any) => {
 
         {/* Stats Cards */}
         <div className="w-full flex gap-2 text-white p-2 rounded-lg mb-8 bg-[#2f2f33] border border-gray-700/20">
-          <div className="flex-1 flex flex-col bg-[#232328]/50 p-3 sm:p-4 rounded-lg items-center justify-center space-y-2 border border-gray-700/10">
-            <User width={20} height={20} className="text-[#008259]" />
+          <div
+            className={`flex-1 flex flex-col bg-[#232328]/50 p-3 sm:p-4 rounded-lg items-center justify-center space-y-2 border ${
+              account?.address ? "border-gray-700/10" : "border-gray-700/5"
+            }`}
+          >
+            <User width={20} height={20} className={account?.address ? "text-[#008259]" : "text-gray-700"} />
             <div className="text-center">
-              <div className="text-[10px] sm:text-xs text-gray-400">You're Ranked</div>
-              <div className="text-lg sm:text-xl font-bold text-[#008259]">
-                {account?.address ? `#${currentUserData?.rank || ""}` : ""}
+              <div className="text-[10px] sm:text-xs text-gray-400">
+                {account?.address ? "You're Ranked" : "Your Rank"}
+              </div>
+              <div className={`text-lg sm:text-xl font-bold ${account?.address ? "text-[#008259]" : "text-gray-600"}`}>
+                {account?.address ? `#${currentUserData?.rank || "-"}` : "---"}
               </div>
             </div>
           </div>
@@ -428,6 +507,91 @@ const MobileLeaderboardPage = ({ leaderboard }: any) => {
             </div>
           </div>
         )}
+
+        {/* Earn More Points Section */}
+        <div className="mb-3 mt-8 bg-[#2f2f33] border border-[#008259]/30 rounded-xl p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <PixelCoins className="w-6 h-6 text-[#008259]" />
+            <h2 className="text-xl font-bold text-white">Earn More Coins</h2>
+          </div>
+          <p className="text-gray-400 text-sm mb-6">Complete these tasks to boost your ranking</p>
+
+          <div className="space-y-3">
+            {/* Twitter Task */}
+            <div
+              className={`flex items-center justify-between p-4 rounded-lg border transition-all ${
+                completedTasks.twitter
+                  ? "bg-[#008259]/10 border-[#008259]/50"
+                  : "bg-[#2f2f33] border-gray-700/20 hover:border-gray-700/40"
+              }`}
+            >
+              <div className="flex items-center gap-3 flex-1">
+                <div className="w-10 h-10 rounded-full bg-[#1DA1F2]/10 flex items-center justify-center">
+                  <Twitter className="w-5 h-5 text-[#1DA1F2]" />
+                </div>
+                <div>
+                  <div className="font-medium text-white text-sm">Follow us on Twitter</div>
+                  <div className="text-xs text-gray-400">+50 coins</div>
+                </div>
+              </div>
+              <button
+                onClick={() => handleTaskComplete("twitter")}
+                disabled={completedTasks.twitter}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                  completedTasks.twitter
+                    ? "bg-[#008259]/20 text-[#008259] cursor-not-allowed"
+                    : "bg-[#008259] text-white hover:bg-[#016244]"
+                }`}
+              >
+                {completedTasks.twitter ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Completed</span>
+                  </>
+                ) : (
+                  <span>Follow</span>
+                )}
+              </button>
+            </div>
+
+            {/* Telegram Task */}
+            {/* <div
+              className={`flex items-center justify-between p-4 rounded-lg border transition-all ${
+                completedTasks.telegram
+                  ? "bg-[#008259]/10 border-[#008259]/50"
+                  : "bg-[#2f2f33] border-gray-700/20 hover:border-gray-700/40"
+              }`}
+            >
+              <div className="flex items-center gap-3 flex-1">
+                <div className="w-10 h-10 rounded-full bg-[#0088cc]/10 flex items-center justify-center">
+                  <Send className="w-5 h-5 text-[#0088cc]" />
+                </div>
+                <div>
+                  <div className="font-medium text-white text-sm">Join our Telegram</div>
+                  <div className="text-xs text-gray-400">Earn 100 points</div>
+                </div>
+              </div>
+              <button
+                onClick={() => handleTaskComplete("telegram")}
+                disabled={completedTasks.telegram}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                  completedTasks.telegram
+                    ? "bg-[#008259]/20 text-[#008259] cursor-not-allowed"
+                    : "bg-[#0088cc] text-white hover:bg-[#006699]"
+                }`}
+              >
+                {completedTasks.telegram ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Completed</span>
+                  </>
+                ) : (
+                  <span>Join</span>
+                )}
+              </button>
+            </div> */}
+          </div>
+        </div>
       </div>
 
       <MobileBottomNav />

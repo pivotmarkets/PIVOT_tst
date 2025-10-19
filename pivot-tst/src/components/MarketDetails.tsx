@@ -308,11 +308,10 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
     maxSlippageBasisPoints: number,
   ) => {
     if (!account) return;
-
     const USDC_DECIMALS = 6;
     const outcomeValue = outcome === "YES" ? 1 : 2;
     const maxSlippage = Math.max(maxSlippageBasisPoints, 100);
-
+    
     try {
       const response = await signAndSubmitTransaction(
         buyPosition({
@@ -322,18 +321,23 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
           maxSlippage: maxSlippage,
         }),
       );
-
+      
       await aptosClient().waitForTransaction({
         transactionHash: response.hash,
       });
+      
       await refetchUSDCBalance();
-
       queryClient.refetchQueries();
-      await awardPoints({
+      
+      // Award points asynchronously
+      awardPoints({
         points: amountUSDC,
         action_type: `buy_position_${marketId}`,
         description: `User claimed ${amountUSDC} pts for betting ${amountUSDC}`,
+      }).catch((error) => {
+        console.error("Failed to award points (non-critical):", error);
       });
+      
       // Correct success toast message
       toast.success(`Successfully bought ${outcome} position for ${amountUSDC.toFixed(2)} USDC`, {
         style: {
@@ -344,20 +348,21 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         },
         duration: 6000,
       });
-
+      
       // Refetch market data after buying
       const marketDetails = await getMarketDetails(market.id);
       fetchPriceHistory();
+      
       if (marketDetails) {
         setMarketDetails(marketDetails as any);
       }
-
+      
       const positions: any = await getUserPositionDetails(market.id, account.address.toString());
       setUserPositions(positions || []);
+      
       return response;
     } catch (error) {
       console.error("Error buying position:", error);
-
       // Add error toast
       toast.error("Failed to buy position. Please try again.", {
         style: {
@@ -368,7 +373,6 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
         },
         duration: 6000,
       });
-
       throw error;
     }
   };
@@ -917,9 +921,9 @@ const MarketDetailPage: React.FC<MarketDetailPageProps> = ({ market }) => {
               {/* If market is resolved, show the outcome */}
               {marketDetails.resolved ? (
                 <div className="flex items-baseline gap-2">
-                  <span className="text-gray-400 text-lg">Resolved</span>
+                  <span className="text-gray-400 text-sm sm:text-lg">Resolved</span>
                   <span
-                    className={`text-4xl font-bold ${resolutionOutcome === "YES" ? "text-green-400" : "text-red-400"}`}
+                    className={`text-3xl font-bold ${resolutionOutcome === "YES" ? "text-green-400" : "text-red-400"}`}
                   >
                     {getResolutionOutcome(marketDetails.outcome)}
                   </span>
