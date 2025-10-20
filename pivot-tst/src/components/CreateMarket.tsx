@@ -564,7 +564,7 @@ const CreateMarket = () => {
           </div>
         </div>
       </header>
-      <div className="max-w-4xl mx-auto px-4 py-8 pb-24 lg:pb-0">
+      <div className="max-w-4xl mx-auto px-4 py-8 pb-24 lg:pb-24">
         {messages.length === 0 ? (
           /* Welcome State */
           <div className="text-center items-center space-y-8">
