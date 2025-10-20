@@ -1,4 +1,4 @@
-# Pivot Market - Smart Contract
+# Pivot Market - AI-Powered prediction markets
 
 A decentralized prediction market platform built on the Aptos blockchain using the Move programming language. This smart contract enables users to create and trade on binary outcome markets (YES/NO) with automated market-making using a **Constant Product Market Maker (CPMM)** and transparent settlement.
 
