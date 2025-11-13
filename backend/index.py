@@ -30,6 +30,19 @@ class Config:
     REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "web:prediction-markets-api:v1.0.0 (by /u/predictionmarkets)")
     ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
 
+# --------------------------------------------------------------
+# GLOBAL EVENT LOOP – ONE LOOP FOR THE ENTIRE PROCESS
+# --------------------------------------------------------------
+_app_loop = asyncio.get_event_loop()
+
+def _run_async(coro):
+    """Run coroutine on the global loop without ever closing it."""
+    future = asyncio.run_coroutine_threadsafe(coro, _app_loop)
+    return future.result()
+
+# --------------------------------------------------------------
+# Data Models
+# --------------------------------------------------------------
 @dataclass
 class MarketSuggestion:
     title: str
@@ -61,51 +74,44 @@ class NewsItem:
     num_comments: Optional[int] = None
     url: Optional[str] = None
 
+# --------------------------------------------------------------
+# Real-Time Data Provider
+# --------------------------------------------------------------
 class RealTimeDataProvider:
-    """Fetches real-time data from various sources including social media"""
-   
     def __init__(self):
         self.session = None
         self.reddit_token = None
         self.token_expires_at = None
-   
+
     async def get_reddit_oauth_token(self) -> Optional[str]:
-        """Get Reddit OAuth token"""
         if not Config.REDDIT_CLIENT_ID or not Config.REDDIT_CLIENT_SECRET:
             logger.warning("Reddit OAuth credentials not configured")
             return None
-       
-        if self.reddit_token and self.token_expires_at:
-            if datetime.now() < self.token_expires_at:
-                return self.reddit_token
-       
+        if self.reddit_token and self.token_expires_at and datetime.now() < self.token_expires_at:
+            return self.reddit_token
         try:
             auth = aiohttp.BasicAuth(Config.REDDIT_CLIENT_ID, Config.REDDIT_CLIENT_SECRET)
             data = {'grant_type': 'client_credentials'}
             headers = {'User-Agent': Config.REDDIT_USER_AGENT}
-           
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     'https://www.reddit.com/api/v1/access_token',
-                    auth=auth,
-                    data=data,
-                    headers=headers
+                    auth=auth, data=data, headers=headers
                 ) as response:
                     if response.status == 200:
                         token_data = await response.json()
                         self.reddit_token = token_data['access_token']
                         self.token_expires_at = datetime.now() + timedelta(seconds=3000)
-                        logger.info("Successfully obtained Reddit OAuth token")
+                        logger.info("Obtained Reddit OAuth token")
                         return self.reddit_token
                     else:
-                        logger.error(f"Failed to get Reddit token: {response.status}")
+                        logger.error(f"Reddit token failed: {response.status}")
                         return None
         except Exception as e:
-            logger.error(f"Error getting Reddit OAuth token: {e}")
+            logger.error(f"Reddit token error: {e}")
             return None
-   
+
     async def get_reddit_trending_by_category(self, categories: List[str] = None, posts_per_category: int = 5) -> List[Dict[str, Any]]:
-        """Get trending posts using OAuth authentication"""
         category_subreddit_map = {
             'crypto': ['cryptocurrency', 'bitcoin', 'ethereum', 'defi'],
             'tech': ['technology', 'programming', 'futurology', 'startups'],
@@ -113,234 +119,148 @@ class RealTimeDataProvider:
             'sports': ['sports', 'nfl', 'nba', 'soccer', 'baseball'],
             'economics': ['economics', 'economy', 'investing']
         }
-       
         if categories is None:
             categories = ['crypto', 'tech', 'politics', 'sports']
-       
         access_token = await self.get_reddit_oauth_token()
         if not access_token:
-            logger.warning("No Reddit token available, returning empty results")
             return []
-       
         try:
-            all_trending_posts = []
+            all_posts = []
             ssl_context = ssl.create_default_context(cafile=certifi.where())
-           
             async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:
                 for category in categories:
                     subreddits = category_subreddit_map.get(category, [category])
-                    category_posts = []
-                   
                     for subreddit in subreddits:
                         url = f"https://oauth.reddit.com/r/{subreddit}/hot"
                         params = {'limit': posts_per_category}
-                        headers = {
-                            'Authorization': f'bearer {access_token}',
-                            'User-Agent': Config.REDDIT_USER_AGENT
-                        }
-                       
+                        headers = {'Authorization': f'bearer {access_token}', 'User-Agent': Config.REDDIT_USER_AGENT}
                         try:
                             async with session.get(url, headers=headers, params=params) as response:
                                 if response.status == 200:
                                     data = await response.json()
-                                    posts = data['data']['children']
-                                    for post in posts:
-                                        post_data = post['data']
-                                        category_posts.append({
-                                            'title': post_data['title'],
-                                            'score': post_data['score'],
+                                    for post in data['data']['children']:
+                                        p = post['data']
+                                        all_posts.append({
+                                            'title': p['title'],
+                                            'score': p['score'],
                                             'subreddit': subreddit,
                                             'category': category,
-                                            'created_utc': post_data['created_utc'],
-                                            'num_comments': post_data['num_comments'],
-                                            'url': f"https://reddit.com{post_data['permalink']}",
-                                            'selftext': post_data.get('selftext', '')[:500],
-                                            'author': post_data.get('author', 'unknown'),
-                                            'upvote_ratio': post_data.get('upvote_ratio', 0.5)
+                                            'created_utc': p['created_utc'],
+                                            'num_comments': p['num_comments'],
+                                            'url': f"https://reddit.com{p['permalink']}",
+                                            'selftext': p.get('selftext', '')[:500],
+                                            'author': p.get('author', 'unknown'),
+                                            'upvote_ratio': p.get('upvote_ratio', 0.5)
                                         })
-                                elif response.status == 401:
-                                    logger.error("Reddit OAuth token expired or invalid")
-                                    self.reddit_token = None
-                                    return []
-                                else:
-                                    logger.error(f"Reddit OAuth API returned status {response.status} for r/{subreddit}")
-                           
                             await asyncio.sleep(0.5)
-                           
                         except Exception as e:
-                            logger.error(f"Error fetching from r/{subreddit}: {e}")
-                            continue
-                   
-                    category_posts.sort(key=lambda x: x['score'], reverse=True)
-                    all_trending_posts.extend(category_posts[:posts_per_category])
-           
-            all_trending_posts.sort(key=lambda x: x['score'], reverse=True)
-            return all_trending_posts
-           
+                            logger.error(f"Reddit fetch error r/{subreddit}: {e}")
+            all_posts.sort(key=lambda x: x['score'], reverse=True)
+            return all_posts
         except Exception as e:
-            logger.error(f"Error fetching Reddit trending by category: {e}")
+            logger.error(f"Reddit trending error: {e}")
             return []
-   
+
     async def get_stock_data(self, symbols: List[str] = None) -> Dict[str, Any]:
-        """Get stock data from Alpha Vantage"""
         if symbols is None:
             symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA']
-       
         if not Config.ALPHA_VANTAGE_API_KEY:
-            logger.warning("Alpha Vantage API key not found!")
             return {}
-       
         try:
-            stock_data = {}
+            data = {}
             async with aiohttp.ClientSession() as session:
                 for symbol in symbols:
                     url = "https://www.alphavantage.co/query"
-                    params = {
-                        'function': 'GLOBAL_QUOTE',
-                        'symbol': symbol,
-                        'apikey': Config.ALPHA_VANTAGE_API_KEY
-                    }
-                    async with session.get(url, params=params) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            quote = data.get('Global Quote', {})
-                            if quote:
-                                stock_data[symbol] = {
-                                    'price': float(quote.get('05. price', 0)),
-                                    'change_percent': float(quote.get('10. change percent', '0%').rstrip('%')),
-                                    'volume': int(quote.get('06. volume', 0))
+                    params = {'function': 'GLOBAL_QUOTE', 'symbol': symbol, 'apikey': Config.ALPHA_VANTAGE_API_KEY}
+                    async with session.get(url, params=params) as resp:
+                        if resp.status == 200:
+                            j = await resp.json()
+                            q = j.get('Global Quote', {})
+                            if q:
+                                data[symbol] = {
+                                    'price': float(q.get('05. price', 0)),
+                                    'change_percent': float(q.get('10. change percent', '0%').rstrip('%')),
+                                    'volume': int(q.get('06. volume', 0))
                                 }
                     await asyncio.sleep(0.2)
-            return stock_data
+            return data
         except Exception as e:
-            logger.error(f"Error fetching stock data: {e}")
+            logger.error(f"Stock data error: {e}")
             return {}
-   
+
     async def get_news_headlines(self, categories: List[str] = None) -> List[Dict[str, Any]]:
-        """Get real news headlines from NewsAPI"""
         if not Config.NEWS_API_KEY:
-            logger.warning("NewsAPI key not found!")
             return []
-       
         try:
             headlines = []
             categories = categories or ['business', 'technology', 'sports']
-           
             async with aiohttp.ClientSession() as session:
-                for category in categories:
+                for cat in categories:
                     url = "https://newsapi.org/v2/top-headlines"
-                    params = {
-                        'apiKey': Config.NEWS_API_KEY,
-                        'category': category,
-                        'language': 'en',
-                        'pageSize': 10
-                    }
-                   
-                    async with session.get(url, params=params) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            for article in data.get('articles', []):
+                    params = {'apiKey': Config.NEWS_API_KEY, 'category': cat, 'language': 'en', 'pageSize': 10}
+                    async with session.get(url, params=params) as resp:
+                        if resp.status == 200:
+                            j = await resp.json()
+                            for a in j.get('articles', []):
                                 headlines.append({
-                                    'title': article['title'],
-                                    'description': article['description'],
-                                    'source': article['source']['name'],
-                                    'published_at': article['publishedAt'],
-                                    'url': article['url'],
-                                    'category': category
+                                    'title': a['title'],
+                                    'description': a['description'],
+                                    'source': a['source']['name'],
+                                    'published_at': a['publishedAt'],
+                                    'url': a['url'],
+                                    'category': cat
                                 })
-           
             return headlines
         except Exception as e:
-            logger.error(f"Error fetching news headlines: {e}")
+            logger.error(f"News headlines error: {e}")
             return []
 
+# --------------------------------------------------------------
+# AI Assistant
+# --------------------------------------------------------------
 class EnhancedAIMarketAssistant:
-    """Enhanced AI assistant with real-time data integration"""
-   
     def __init__(self):
         self.gemini_client = None
         self.data_provider = RealTimeDataProvider()
-       
         if Config.GEMINI_API_KEY:
             try:
                 genai.configure(api_key=Config.GEMINI_API_KEY)
                 self.gemini_client = genai.GenerativeModel('gemini-2.0-flash')
-                logger.info("Gemini 2.0 Flash initialized (free tier)")
+                logger.info("Gemini 2.0 Flash initialized")
             except Exception as e:
-                logger.error(f"Failed to initialize Gemini client: {e}")
+                logger.error(f"Gemini init failed: {e}")
                 self.gemini_client = None
-   
+
     async def gather_real_time_context(self, query: str) -> Dict[str, Any]:
-        """Gather relevant real-time data based on query"""
-        context = {
-            'stock_data': {},
-            'reddit_trends': [],
-            'news_headlines': [],
-            'timestamp': datetime.now().isoformat()
-        }
-       
-        query_lower = query.lower()
-       
-        stock_symbols = []
-        if any(term in query_lower for term in ['stock', 'apple', 'google', 'microsoft', 'tesla', 'nvidia']):
-            stock_symbols.extend(['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA'])
-       
-        reddit_categories = []
-        if 'crypto' in query_lower: reddit_categories.append('crypto')
-        if 'stock' in query_lower or 'finance' in query_lower: reddit_categories.append('economics')
-        if 'politics' in query_lower: reddit_categories.append('politics')
-        if 'technology' in query_lower or 'tech' in query_lower: reddit_categories.append('tech')
-        if 'sports' in query_lower: reddit_categories.append('sports')
-       
-        news_categories = []
-        if 'news' in query_lower:
-            news_categories = ['general', 'business']
-        else:
-            news_categories = [cat for cat in ['business', 'technology', 'sports'] if cat in query_lower]
-       
-        if not reddit_categories: reddit_categories = ['crypto', 'tech']
-        if not news_categories: news_categories = ['business', 'technology']
-       
+        context = {'stock_data': {}, 'reddit_trends': [], 'news_headlines': [], 'timestamp': datetime.now().isoformat()}
+        ql = query.lower()
+        stock_symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA'] if any(x in ql for x in ['stock', 'apple', 'google', 'microsoft', 'tesla', 'nvidia']) else []
+        reddit_cats = ['crypto'] if 'crypto' in ql else ['economics'] if 'stock' in ql or 'finance' in ql else ['politics'] if 'politics' in ql else ['tech'] if 'tech' in ql else ['sports'] if 'sports' in ql else ['crypto', 'tech']
+        news_cats = ['business', 'technology'] if 'news' not in ql else ['general', 'business']
         tasks = [
-            self.data_provider.get_stock_data(stock_symbols) if stock_symbols else self._empty_dict(),
-            self.data_provider.get_reddit_trending_by_category(reddit_categories, 3),
-            self.data_provider.get_news_headlines(news_categories)
+            self.data_provider.get_stock_data(stock_symbols) if stock_symbols else asyncio.sleep(0),
+            self.data_provider.get_reddit_trending_by_category(reddit_cats, 3),
+            self.data_provider.get_news_headlines(news_cats)
         ]
-       
         results = await asyncio.gather(*tasks, return_exceptions=True)
-       
-        if len(results) > 0 and not isinstance(results[0], Exception):
-            context['stock_data'] = results[0]
-        if len(results) > 1 and not isinstance(results[1], Exception):
-            context['reddit_trends'] = results[1]
-        if len(results) > 2 and not isinstance(results[2], Exception):
-            context['news_headlines'] = results[2]
-       
+        if len(results) > 0 and not isinstance(results[0], Exception): context['stock_data'] = results[0]
+        if len(results) > 1 and not isinstance(results[1], Exception): context['reddit_trends'] = results[1]
+        if len(results) > 2 and not isinstance(results[2], Exception): context['news_headlines'] = results[2]
         return context
-   
-    async def _empty_dict(self):
-        return {}
-   
+
     async def generate_prediction_markets_async(self, query: str, num_suggestions: int = 4) -> List[MarketSuggestion]:
-        """Generate prediction markets with real-time data integration"""
         if not self.gemini_client:
             return self._fallback_suggestions(query)
-
-        num_suggestions = min(num_suggestions, 4)  # Balanced for 2.0 Flash
-
+        num_suggestions = min(num_suggestions, 4)
         try:
             real_time_context = await self.gather_real_time_context(query)
             current_date = datetime.now().strftime('%Y-%m-%d %H:%M')
-            min_end_time = datetime.now() + timedelta(hours=1)
-            min_end_date = min_end_time.strftime('%d/%m/%Y %H:%M')
+            min_end_date = (datetime.now() + timedelta(hours=1)).strftime('%d/%m/%Y %H:%M')
             context_str = self._build_context_string(real_time_context)
-
-            # Aggressive trim: 15 lines max to prevent overflow
             context_lines = context_str.split('\n')
             if len(context_lines) > 15:
-                context_lines = context_lines[:15] + ['... (context trimmed for token limits)']
+                context_lines = context_lines[:15] + ['... (trimmed)']
                 context_str = '\n'.join(context_lines)
-
             prompt = f"""
 Based on query: "{query}"
 Time: {current_date}
@@ -348,9 +268,9 @@ Min end: {min_end_date}
 Context: {context_str}
 
 Generate {num_suggestions} yes/no markets. ONLY JSON array. No text.
-Keys (double quotes, short values):
+Keys:
 {{
-  "title": "Short title",
+  "title": "Short",
   "question": "Yes/no?",
   "description": "1 sentence",
   "context": "1 sentence",
@@ -364,263 +284,86 @@ Keys (double quotes, short values):
   "key_factors": ["f1", "f2"]
 }}
 """
-
-            for attempt in range(5):  # More retries for 2.0 bugs
+            for attempt in range(5):
                 try:
                     response = await self.gemini_client.generate_content_async(
                         prompt,
-                        generation_config={
-                            "temperature": 0.6,
-                            "max_output_tokens": 2000,
-                        }
+                        generation_config={"temperature": 0.6, "max_output_tokens": 2000}
                     )
-                   
-                    content = response.text
-                    content = self._clean_json_response(content)  # Enhanced repair
-                   
-                    suggestions_data = json.loads(content)
-                    suggestions = []
-                   
-                    for data in suggestions_data:
-                        data['real_time_data'] = real_time_context
-                        suggestions.append(MarketSuggestion(**data))
-                   
+                    content = self._clean_json_response(response.text)
+                    data = json.loads(content)
+                    suggestions = [MarketSuggestion(**{**d, 'real_time_data': real_time_context}) for d in data]
                     return self._validate_market_times(suggestions)
-
                 except json.JSONDecodeError as e:
-                    logger.warning(f"JSON failed (attempt {attempt+1}): {e} at char ~{e.pos}")
+                    logger.warning(f"JSON failed (attempt {attempt+1}): {e}")
                     if attempt == 4:
-                        logger.error(f"Max retries. Raw (truncated): {content[:1200]}...")
                         return self._fallback_suggestions(query)
-                    await asyncio.sleep(3 ** attempt)  # Longer backoff: 3s, 9s, 27s, 81s
-
-                except Exception as inner_e:
-                    logger.error(f"Gemini error (attempt {attempt+1}): {inner_e}")
+                    await asyncio.sleep(3 ** attempt)
+                except Exception as e:
+                    logger.error(f"Gemini error (attempt {attempt+1}): {e}")
                     if attempt == 4:
                         return self._fallback_suggestions(query)
                     await asyncio.sleep(10)
-
         except Exception as e:
-            logger.error(f"Enhanced market generation failed: {e}")
+            logger.error(f"Market gen failed: {e}")
             return self._fallback_suggestions(query)
-   
-    async def get_trending_news_async(self, categories: List[str] = None, limit: int = 10) -> List[NewsItem]:
-        """Fetch and process real trending news from Reddit"""
-        try:
-            reddit_categories = []
-            if categories:
-                for cat in categories:
-                    if cat.lower() in ['cryptocurrency', 'crypto', 'bitcoin', 'aptos']:
-                        reddit_categories.append('crypto')
-                    elif cat.lower() in ['technology', 'tech', 'programming']:
-                        reddit_categories.append('tech')
-                    elif cat.lower() in ['politics', 'worldnews', 'news']:
-                        reddit_categories.append('politics')
-                    elif cat.lower() in ['sports', 'nfl', 'nba', 'soccer']:
-                        reddit_categories.append('sports')
-                    elif cat.lower() in ['economics', 'economy', 'investing']:
-                        reddit_categories.append('economics')
-           
-            if not reddit_categories:
-                reddit_categories = ['crypto', 'tech', 'politics', 'sports']
-           
-            reddit_posts = await self.data_provider.get_reddit_trending_by_category(
-                reddit_categories, posts_per_category=max(3, limit // len(reddit_categories))
-            )
-           
-            news_items = []
-            current_time = datetime.now()
-           
-            for post in reddit_posts[:limit]:
-                post_time = datetime.fromtimestamp(post['created_utc'])
-                time_ago = current_time - post_time
-               
-                if time_ago.days > 0:
-                    time_str = f"{time_ago.days}d ago"
-                elif time_ago.seconds > 3600:
-                    time_str = f"{time_ago.seconds // 3600}h ago"
-                else:
-                    time_str = f"{time_ago.seconds // 60}m ago"
-               
-                if post['score'] > 5000 or post['num_comments'] > 500:
-                    impact_level = "high"
-                elif post['score'] > 1000 or post['num_comments'] > 100:
-                    impact_level = "medium"
-                else:
-                    impact_level = "low"
-               
-                market_potential = min(1.0, (post['score'] / 10000 + post['num_comments'] / 1000) * 0.8)
-                if post['category'] in ['crypto', 'tech']:
-                    market_potential = min(1.0, market_potential + 0.2)
-               
-                suggested_questions = [
-                    f"Will this Reddit post reach 10k upvotes within 24 hours?",
-                    f"Will the topic discussed become a major news story this week?"
-                ]
-               
-                if post['category'] == 'crypto':
-                    suggested_questions.append("Will this impact crypto markets by >5% this week?")
-                elif post['category'] == 'tech':
-                    suggested_questions.append("Will this tech trend gain mainstream adoption?")
-                elif post['category'] == 'politics':
-                    suggested_questions.append("Will this political event affect policy outcomes?")
-                elif post['category'] == 'sports':
-                    suggested_questions.append("Will this sports news affect team performance?")
-               
-                summary = post['title']
-                if post.get('selftext') and len(post['selftext']) > 50:
-                    summary += f" - {post['selftext'][:200]}..."
-               
-                news_item = NewsItem(
-                    title=post['title'],
-                    summary=summary,
-                    category=post['category'],
-                    impact_level=impact_level,
-                    market_potential=market_potential,
-                    suggested_market_questions=suggested_questions[:3],
-                    timestamp=post_time.strftime('%Y-%m-%d %H:%M'),
-                    subreddit=post['subreddit'],
-                    score=post['score'],
-                    num_comments=post['num_comments'],
-                    url=post['url'],
-                    real_data_context={
-                        'reddit_post': post,
-                        'time_ago': time_str,
-                        'upvote_ratio': post.get('upvote_ratio', 0.5)
-                    }
-                )
-                news_items.append(news_item)
-           
-            return news_items
-           
-        except Exception as e:
-            logger.error(f"Enhanced Reddit trending news generation failed: {e}")
-            return self._fallback_news({})
-   
+
     def _build_context_string(self, context: Dict[str, Any]) -> str:
-        """Build a detailed context string from real-time data"""
         parts = []
-       
         if context.get('stock_data'):
             parts.append("STOCKS:")
-            for symbol, data in context['stock_data'].items():
-                parts.append(f"- {symbol}: ${data['price']:.2f} ({data['change_percent']:+.2f}%)")
-       
+            for s, d in context['stock_data'].items():
+                parts.append(f"- {s}: ${d['price']:.2f} ({d['change_percent']:+.2f}%)")
         if context.get('reddit_trends'):
-            parts.append("REDDIT TOP:")
-            for trend in context['reddit_trends'][:5]:  # Shorter
-                parts.append(f"- {trend['title']} (r/{trend['subreddit']}, {trend['score']} pts)")
-       
+            parts.append("REDDIT:")
+            for t in context['reddit_trends'][:5]:
+                parts.append(f"- {t['title']} (r/{t['subreddit']}, {t['score']} pts)")
         if context.get('news_headlines'):
             parts.append("NEWS:")
-            for headline in context['news_headlines'][:5]:  # Shorter
-                parts.append(f"- {headline['title']}")
-       
+            for h in context['news_headlines'][:5]:
+                parts.append(f"- {h['title']}")
         parts.append(f"Time: {context['timestamp']}")
-       
         return '\n'.join(parts)
-   
+
     def _clean_json_response(self, content: str) -> str:
-        """Ultra-aggressive JSON repair for gemini-2.0-flash truncations"""
         content = content.strip()
-        
-        # Strip markdown/code blocks
-        if content.startswith('```json'):
-            content = content[7:]
-        elif content.startswith('```'):
-            content = content[3:]
-        if content.endswith('```'):
-            content = content[:-3]
+        if content.startswith('```json'): content = content[7:]
+        elif content.startswith('```'): content = content[3:]
+        if content.endswith('```'): content = content[:-3]
         content = content.strip()
-        
-        if not content or content == '[]':
-            return '[]'
-        
-        # Ensure array wrapper if missing
-        if not content.startswith('['):
-            content = '[' + content
-        if not content.endswith(']'):
-            content += ']'
-        
-        import re
-        
-        # Phase 1: Fix quotes (single → double, escape internals)
+        if not content or content == '[]': return '[]'
+        if not content.startswith('['): content = '[' + content
+        if not content.endswith(']'): content += ']'
         content = re.sub(r"(?<!\\)'([^']*)'", r'"\1"', content)
-        content = content.replace('\\"', '"')  # Unescape if over-escaped
-        
-        # Phase 2: Close unterminated strings (key fix for char 10K+ errors)
-        # Find open " not followed by content or close
-        def close_open_strings(match):
-            open_str = match.group(1)
-            if not open_str.endswith('"'):
-                return open_str + '"'
-            return open_str
-        content = re.sub(r'(".*?)(?=\s*[,}\]]|$)', close_open_strings, content, flags=re.DOTALL)
-        
-        # Phase 3: Remove/fix trailing commas
+        content = re.sub(r'("\s*[^"]*?)(?=\s*[,}\]]|$)', r'\1"', content)
         content = re.sub(r',\s*([}\]])', r'\1', content)
-        
-        # Phase 4: Per-object repair (parse valid ones, discard junk)
-        if content.startswith('['):
-            try:
-                # Extract potential objects
-                objects = re.findall(r'\{[^{}]*?(?=\s*[,}])', content, re.DOTALL)  # Rough split
-                valid_objects = []
-                for obj in objects:
-                    try:
-                        # Quick validate & close if needed
-                        obj = re.sub(r'("\s*[^"]*?)(?=\s*[,}])', r'\1""', obj)
-                        json.loads('{' + obj + '}')
-                        valid_objects.append('{' + obj + '}')
-                    except:
-                        pass  # Skip broken
-                
-                if valid_objects:
-                    content = '[' + ','.join(valid_objects) + ']'
-                    logger.info(f"Repaired {len(valid_objects)} valid objects from partial response")
-                else:
-                    content = '[]'
-            except:
-                pass  # Fallback to raw
-        
-        # Phase 5: Trim to first complete array if still long/broken
-        array_match = re.search(r'\[.*?\]', content, re.DOTALL)
-        if array_match:
-            content = array_match.group(0)
-        
-        logger.debug(f"Repaired JSON preview: {content[:300]}...")
+        try:
+            array_match = re.search(r'\[.*?\]', content, re.DOTALL)
+            if array_match: content = array_match.group(0)
+        except: pass
         return content.strip()
-   
+
     def _validate_market_times(self, suggestions: List[MarketSuggestion]) -> List[MarketSuggestion]:
-        """Validate market end times"""
-        current_time = datetime.now()
-        min_end_time = current_time + timedelta(hours=1)
-        validated = []
-       
-        for suggestion in suggestions:
+        min_time = datetime.now() + timedelta(hours=1)
+        for s in suggestions:
             try:
-                end_datetime = datetime.strptime(suggestion.end_date, '%d/%m/%Y %H:%M') if ' ' in suggestion.end_date else datetime.strptime(suggestion.end_date + ' 23:59', '%d/%m/%Y %H:%M')
-                if end_datetime < min_end_time:
-                    new_end_time = min_end_time + timedelta(days=30)
-                    suggestion.end_date = new_end_time.strftime('%d/%m/%Y %H:%M')
-                validated.append(suggestion)
-            except ValueError:
-                default_end_time = min_end_time + timedelta(days=30)
-                suggestion.end_date = default_end_time.strftime('%d/%m/%Y %H:%M')
-                validated.append(suggestion)
-        return validated
-   
+                end = datetime.strptime(s.end_date, '%d/%m/%Y %H:%M') if ' ' in s.end_date else datetime.strptime(s.end_date + ' 23:59', '%d/%m/%Y %H:%M')
+                if end < min_time:
+                    s.end_date = (min_time + timedelta(days=30)).strftime('%d/%m/%Y %H:%M')
+            except:
+                s.end_date = (min_time + timedelta(days=30)).strftime('%d/%m/%Y %H:%M')
+        return suggestions
+
     def _fallback_suggestions(self, query: str) -> List[MarketSuggestion]:
-        """Fallback suggestions"""
-        end_date = (datetime.now() + timedelta(hours=1, days=30)).strftime('%d/%m/%Y %H:%M')
+        end = (datetime.now() + timedelta(hours=1, days=30)).strftime('%d/%m/%Y %H:%M')
         return [MarketSuggestion(
             title=f"Prediction: {query}",
             question=f"Will {query} occur?",
-            description="Fallback market due to data fetch failure.",
-            context="Limited data available.",
-            resolution_criteria="Based on reliable sources.",
+            description="Fallback due to error.",
+            context="Limited data.",
+            resolution_criteria="Reliable sources.",
             sources=["Fallback"],
-            end_date=end_date,
+            end_date=end,
             category="general",
             ai_probability=0.5,
             confidence=0.3,
@@ -628,66 +371,84 @@ Keys (double quotes, short values):
             key_factors=["Unknown"],
             real_time_data={}
         )]
-   
-    def _fallback_news(self, context: Dict[str, Any]) -> List[NewsItem]:
-        """Fallback news"""
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
-        return [NewsItem(
-            title="Fallback News",
-            summary="Real-time data fetch failed.",
-            category="general",
-            impact_level="low",
-            market_potential=0.5,
-            suggested_market_questions=["Will data integration succeed soon?"],
-            timestamp=timestamp,
-            real_data_context=context
-        )]
 
+    async def get_trending_news_async(self, categories: List[str] = None, limit: int = 10) -> List[NewsItem]:
+        try:
+            reddit_cats = []
+            if categories:
+                for c in categories:
+                    cl = c.lower()
+                    if cl in ['cryptocurrency', 'crypto', 'bitcoin', 'aptos']: reddit_cats.append('crypto')
+                    elif cl in ['technology', 'tech', 'programming']: reddit_cats.append('tech')
+                    elif cl in ['politics', 'worldnews', 'news']: reddit_cats.append('politics')
+                    elif cl in ['sports', 'nfl', 'nba', 'soccer']: reddit_cats.append('sports')
+                    elif cl in ['economics', 'economy', 'investing']: reddit_cats.append('economics')
+            if not reddit_cats: reddit_cats = ['crypto', 'tech', 'politics', 'sports']
+            posts = await self.data_provider.get_reddit_trending_by_category(reddit_cats, max(3, limit // len(reddit_cats)))
+            items = []
+            now = datetime.now()
+            for p in posts[:limit]:
+                pt = datetime.fromtimestamp(p['created_utc'])
+                ago = now - pt
+                time_str = f"{ago.days}d ago" if ago.days > 0 else f"{ago.seconds//3600}h ago" if ago.seconds > 3600 else f"{ago.seconds//60}m ago"
+                impact = "high" if p['score'] > 5000 or p['num_comments'] > 500 else "medium" if p['score'] > 1000 or p['num_comments'] > 100 else "low"
+                potential = min(1.0, (p['score']/10000 + p['num_comments']/1000) * 0.8)
+                if p['category'] in ['crypto', 'tech']: potential = min(1.0, potential + 0.2)
+                questions = [f"Will this post reach 10k upvotes in 24h?", f"Will topic become major news?"]
+                if p['category'] == 'crypto': questions.append("Will this move crypto >5%?")
+                items.append(NewsItem(
+                    title=p['title'],
+                    summary=p['title'] + (f" - {p['selftext'][:200]}..." if p.get('selftext') else ""),
+                    category=p['category'],
+                    impact_level=impact,
+                    market_potential=potential,
+                    suggested_market_questions=questions[:3],
+                    timestamp=pt.strftime('%Y-%m-%d %H:%M'),
+                    subreddit=p['subreddit'],
+                    score=p['score'],
+                    num_comments=p['num_comments'],
+                    url=p['url'],
+                    real_data_context={'reddit_post': p, 'time_ago': time_str, 'upvote_ratio': p.get('upvote_ratio', 0.5)}
+                ))
+            return items
+        except Exception as e:
+            logger.error(f"News gen failed: {e}")
+            return []
+
+# --------------------------------------------------------------
+# Flask API
+# --------------------------------------------------------------
 class EnhancedPredictionAPI:
-    """Enhanced API with real-time data-driven predictions"""
-   
     def __init__(self):
         self.app = Flask(__name__)
         CORS(self.app)
         self.ai_assistant = EnhancedAIMarketAssistant()
         self.register_routes()
-   
+
     def register_routes(self):
-        """Register all API routes"""
-       
         @self.app.route('/api/predict', methods=['POST'])
         def generate_prediction_markets():
             try:
                 data = request.json
                 query = data.get('query', '')
-                num_suggestions = data.get('num_suggestions', 4)  # Balanced default
-               
+                num_suggestions = data.get('num_suggestions', 4)
                 if not query:
-                    return jsonify({'success': False, 'error': 'Query is required'}), 400
-               
-                session_id = str(uuid.uuid4())
-               
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    suggestions = loop.run_until_complete(
-                        self.ai_assistant.generate_prediction_markets_async(query, num_suggestions)
-                    )
-                finally:
-                    loop.close()
-               
+                    return jsonify({'success': False, 'error': 'Query required'}), 400
+                suggestions = _run_async(
+                    self.ai_assistant.generate_prediction_markets_async(query, num_suggestions)
+                )
                 return jsonify({
                     'success': True,
-                    'session_id': session_id,
+                    'session_id': str(uuid.uuid4()),
                     'query': query,
                     'prediction_markets': [asdict(s) for s in suggestions],
                     'count': len(suggestions),
-                    'note': 'Predictions based on real-time data'
+                    'note': 'Real-time data powered'
                 })
             except Exception as e:
-                logger.error(f"Error: {e}")
+                logger.error(f"Predict error: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
-       
+
         @self.app.route('/api/news/trending', methods=['GET', 'POST'])
         def get_trending_news():
             try:
@@ -696,192 +457,99 @@ class EnhancedPredictionAPI:
                     categories = data.get('categories', ['crypto', 'tech', 'politics', 'sports'])
                     limit = data.get('limit', 15)
                 else:
-                    categories_param = request.args.get('categories')
-                    if categories_param:
-                        categories = [cat.strip() for cat in categories_param.split(',')]
-                    else:
-                        categories = ['crypto', 'tech', 'politics', 'sports']
+                    cats = request.args.get('categories')
+                    categories = [c.strip() for c in cats.split(',')] if cats else ['crypto', 'tech', 'politics', 'sports']
                     limit = int(request.args.get('limit', 15))
-               
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    news_items = loop.run_until_complete(
-                        self.ai_assistant.get_trending_news_async(categories, limit)
-                    )
-                finally:
-                    loop.close()
-               
-                categorized_news = {}
+                news_items = _run_async(self.ai_assistant.get_trending_news_async(categories, limit))
+                categorized = {}
                 for item in news_items:
-                    if item.category not in categorized_news:
-                        categorized_news[item.category] = []
-                    categorized_news[item.category].append(asdict(item))
-               
+                    cat = item.category
+                    if cat not in categorized: categorized[cat] = []
+                    categorized[cat].append(asdict(item))
                 return jsonify({
                     'success': True,
                     'timestamp': datetime.now().isoformat(),
                     'news_count': len(news_items),
                     'categories': categories,
-                    'trending_news': [asdict(item) for item in news_items],
-                    'categorized_news': categorized_news,
-                    'note': 'Trending topics from Reddit (OAuth authenticated)'
+                    'trending_news': [asdict(i) for i in news_items],
+                    'categorized_news': categorized
                 })
             except Exception as e:
-                logger.error(f"Error: {e}")
+                logger.error(f"News error: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
-       
+
         @self.app.route('/api/reddit/trending', methods=['GET'])
         def get_reddit_trending():
-            """Get raw Reddit trending posts"""
             try:
                 categories = request.args.get('categories', 'crypto,tech,politics,sports').split(',')
-                posts_per_category = int(request.args.get('posts_per_category', 5))
-               
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    reddit_posts = loop.run_until_complete(
-                        self.ai_assistant.data_provider.get_reddit_trending_by_category(
-                            [cat.strip() for cat in categories], posts_per_category
-                        )
+                posts_per = int(request.args.get('posts_per_category', 5))
+                posts = _run_async(
+                    self.ai_assistant.data_provider.get_reddit_trending_by_category(
+                        [c.strip() for c in categories], posts_per
                     )
-                finally:
-                    loop.close()
-               
-                categorized_posts = {}
-                for post in reddit_posts:
-                    category = post['category']
-                    if category not in categorized_posts:
-                        categorized_posts[category] = []
-                   
-                    post_time = datetime.fromtimestamp(post['created_utc'])
-                    time_ago = datetime.now() - post_time
-                    if time_ago.days > 0:
-                        post['time_ago'] = f"{time_ago.days}d ago"
-                    elif time_ago.seconds > 3600:
-                        post['time_ago'] = f"{time_ago.seconds // 3600}h ago"
-                    else:
-                        post['time_ago'] = f"{time_ago.seconds // 60}m ago"
-                   
-                    categorized_posts[category].append(post)
-               
+                )
+                categorized = {}
+                for p in posts:
+                    cat = p['category']
+                    if cat not in categorized: categorized[cat] = []
+                    pt = datetime.fromtimestamp(p['created_utc'])
+                    ago = datetime.now() - pt
+                    p['time_ago'] = f"{ago.days}d ago" if ago.days > 0 else f"{ago.seconds//3600}h ago" if ago.seconds > 3600 else f"{ago.seconds//60}m ago"
+                    categorized[cat].append(p)
                 return jsonify({
                     'success': True,
-                    'timestamp': datetime.now().isoformat(),
-                    'total_posts': len(reddit_posts),
-                    'categories': list(categorized_posts.keys()),
-                    'reddit_posts': reddit_posts,
-                    'categorized_posts': categorized_posts,
-                    'note': 'OAuth authenticated Reddit data'
+                    'total_posts': len(posts),
+                    'reddit_posts': posts,
+                    'categorized_posts': categorized
                 })
             except Exception as e:
-                logger.error(f"Error fetching Reddit trending: {e}")
+                logger.error(f"Reddit error: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
-       
+
         @self.app.route('/api/market/search-suggestions', methods=['POST'])
         def get_market_suggestions():
-            """Market search suggestions endpoint (alias for /api/predict)"""
-            try:
-                data = request.json
-                query = data.get('query', '')
-                num_suggestions = data.get('num_suggestions', 4)
-               
-                if not query:
-                    return jsonify({'success': False, 'error': 'Query is required'}), 400
-               
-                session_id = str(uuid.uuid4())
-               
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    suggestions = loop.run_until_complete(
-                        self.ai_assistant.generate_prediction_markets_async(query, num_suggestions)
-                    )
-                finally:
-                    loop.close()
-               
-                return jsonify({
-                    'success': True,
-                    'session_id': session_id,
-                    'query': query,
-                    'prediction_markets': [asdict(s) for s in suggestions],
-                    'count': len(suggestions),
-                    'note': 'Predictions based on real-time data'
-                })
-            except Exception as e:
-                logger.error(f"Error in search suggestions: {e}")
-                return jsonify({'success': False, 'error': str(e)}), 500
-       
+            return generate_prediction_markets()
+
         @self.app.route('/api/market/analyze', methods=['POST'])
         def analyze_market():
             try:
-                data = request.json
-                description = data.get('description', '')
-               
-                if not description:
-                    return jsonify({'success': False, 'error': 'Description required'}), 400
-               
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    suggestions = loop.run_until_complete(
-                        self.ai_assistant.generate_prediction_markets_async(description, 1)
-                    )
-                finally:
-                    loop.close()
-               
-                if suggestions:
-                    s = suggestions[0]
-                    return jsonify({
-                        'success': True,
-                        'analysis': {
-                            'probability': s.ai_probability,
-                            'confidence': s.confidence,
-                            'sentiment_score': s.sentiment_score,
-                            'key_factors': s.key_factors,
-                            'resolution_criteria': s.resolution_criteria,
-                            'real_time_data': s.real_time_data
-                        }
-                    })
-                return jsonify({'success': False, 'error': 'Analysis failed'}), 500
+                desc = request.json.get('description', '')
+                if not desc: return jsonify({'success': False, 'error': 'Description required'}), 400
+                suggestions = _run_async(self.ai_assistant.generate_prediction_markets_async(desc, 1))
+                if not suggestions: return jsonify({'success': False, 'error': 'Failed'}), 500
+                s = suggestions[0]
+                return jsonify({'success': True, 'analysis': {
+                    'probability': s.ai_probability,
+                    'confidence': s.confidence,
+                    'sentiment_score': s.sentiment_score,
+                    'key_factors': s.key_factors,
+                    'resolution_criteria': s.resolution_criteria,
+                    'real_time_data': s.real_time_data
+                }})
             except Exception as e:
                 return jsonify({'success': False, 'error': str(e)}), 500
-       
+
         @self.app.route('/api/market/quick-prediction', methods=['POST'])
         def quick_prediction():
             try:
-                data = request.json
-                query = data.get('query', '')
-               
-                if not query:
-                    return jsonify({'success': False, 'error': 'Query required'}), 400
-               
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    suggestions = loop.run_until_complete(
-                        self.ai_assistant.generate_prediction_markets_async(query, 1)
-                    )
-                finally:
-                    loop.close()
-               
-                if suggestions:
-                    s = suggestions[0]
-                    prob = s.ai_probability
-                    answer = "Likely YES" if prob > 0.7 else "Likely NO" if prob < 0.3 else "Uncertain"
-                    return jsonify({
-                        'success': True,
-                        'query': query,
-                        'answer': f"{answer} ({prob:.1%})",
-                        'confidence': s.confidence,
-                        'factors': s.key_factors,
-                        'market_suggestion': asdict(s)
-                    })
-                return jsonify({'success': False, 'error': 'Prediction failed'}), 500
+                query = request.json.get('query', '')
+                if not query: return jsonify({'success': False, 'error': 'Query required'}), 400
+                suggestions = _run_async(self.ai_assistant.generate_prediction_markets_async(query, 1))
+                if not suggestions: return jsonify({'success': False, 'error': 'Failed'}), 500
+                s = suggestions[0]
+                prob = s.ai_probability
+                answer = "Likely YES" if prob > 0.7 else "Likely NO" if prob < 0.3 else "Uncertain"
+                return jsonify({
+                    'success': True,
+                    'query': query,
+                    'answer': f"{answer} ({prob:.1%})",
+                    'confidence': s.confidence,
+                    'factors': s.key_factors,
+                    'market_suggestion': asdict(s)
+                })
             except Exception as e:
                 return jsonify({'success': False, 'error': str(e)}), 500
-       
+
         @self.app.route('/api/health', methods=['GET'])
         def health_check():
             return jsonify({
@@ -893,28 +561,11 @@ class EnhancedPredictionAPI:
                     'alphavantage': bool(Config.ALPHA_VANTAGE_API_KEY),
                     'reddit_oauth': bool(Config.REDDIT_CLIENT_ID and Config.REDDIT_CLIENT_SECRET)
                 },
-                'supported_categories': ['crypto', 'tech', 'politics', 'sports', 'economics'],
-                'reddit_sources': {
-                    'crypto': ['cryptocurrency', 'bitcoin', 'ethereum', 'defi'],
-                    'tech': ['technology', 'programming', 'futurology', 'startups'],
-                    'politics': ['politics', 'worldnews', 'news'],
-                    'sports': ['sports', 'nfl', 'nba', 'soccer', 'baseball'],
-                    'economics': ['economics', 'economy', 'investing']
-                },
-                'note': 'Enhanced with Reddit OAuth authentication + JSON repair for 2.0 Flash'
+                'note': 'Event loop fixed, Gemini 2.0 Flash + JSON repair'
             })
-   
+
     def run(self, host='0.0.0.0', port=8000, debug=False):
-        logger.info(f"Starting Enhanced Prediction API Server on {host}:{port}")
-        logger.info(f"Integrations: Gemini {'✓' if Config.GEMINI_API_KEY else '✗'}, NewsAPI {'✓' if Config.NEWS_API_KEY else '✗'}, AlphaVantage {'✓' if Config.ALPHA_VANTAGE_API_KEY else '✗'}, Reddit OAuth {'✓' if Config.REDDIT_CLIENT_ID else '✗'}")
-        logger.info("Features: Reddit OAuth authentication for reliable data access")
-        logger.info("Supported categories: crypto, tech, politics, sports, economics")
-       
-        if not Config.GEMINI_API_KEY:
-            logger.warning("Missing GEMINI_API_KEY! AI features will be limited.")
-        if not Config.REDDIT_CLIENT_ID or not Config.REDDIT_CLIENT_SECRET:
-            logger.warning("Missing Reddit OAuth credentials! Reddit features will not work.")
-       
+        logger.info(f"Starting API on {host}:{port}")
         self.app.run(host=host, port=port, debug=debug)
 
 if __name__ == "__main__":
