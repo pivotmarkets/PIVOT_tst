@@ -276,6 +276,76 @@ class EnhancedAIMarketAssistant:
                 logger.error(f"Failed to initialize Gemini client: {e}")
                 self.gemini_client = None
     
+    def _fix_json_string(self, json_str: str) -> str:
+        """Advanced JSON string fixing with multiple strategies"""
+        # Remove markdown code blocks
+        json_str = re.sub(r'```json\s*|\s*```', '', json_str, flags=re.MULTILINE)
+        json_str = json_str.strip()
+        
+        # Try to find the JSON array boundaries
+        start_idx = json_str.find('[')
+        end_idx = json_str.rfind(']')
+        
+        if start_idx != -1 and end_idx != -1:
+            json_str = json_str[start_idx:end_idx+1]
+        
+        # Fix common JSON issues
+        # 1. Fix unescaped quotes in strings (but not in keys/values properly formatted)
+        # This is a simplified approach - for production, consider using a proper JSON repair library
+        
+        # 2. Remove trailing commas before ] or }
+        json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+        
+        # 3. Fix newlines within strings
+        # Split by quotes, process only odd-indexed items (inside strings)
+        parts = json_str.split('"')
+        for i in range(1, len(parts), 2):  # Odd indices are inside strings
+            parts[i] = parts[i].replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+        json_str = '"'.join(parts)
+        
+        return json_str
+    
+    def _parse_json_with_fallback(self, content: str) -> List[Dict]:
+        """Parse JSON with multiple fallback strategies"""
+        # Strategy 1: Direct parse
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as e:
+            logger.warning(f"Direct JSON parse failed: {e}")
+        
+        # Strategy 2: Clean and parse
+        try:
+            cleaned = self._fix_json_string(content)
+            return json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            logger.warning(f"Cleaned JSON parse failed: {e}")
+        
+        # Strategy 3: Extract individual objects manually
+        try:
+            objects = []
+            # Find all {...} patterns
+            pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+            matches = re.finditer(pattern, content, re.DOTALL)
+            
+            for match in matches:
+                try:
+                    obj_str = match.group(0)
+                    obj_str = self._fix_json_string(obj_str)
+                    obj = json.loads(obj_str)
+                    objects.append(obj)
+                except:
+                    continue
+            
+            if objects:
+                logger.info(f"Extracted {len(objects)} objects using regex fallback")
+                return objects
+        except Exception as e:
+            logger.warning(f"Regex extraction failed: {e}")
+        
+        # Strategy 4: Return empty list
+        logger.error("All JSON parsing strategies failed")
+        return []
+    
     async def gather_real_time_context(self, query: str) -> Dict[str, Any]:
         """Gather relevant real-time data based on query"""
         context = {
@@ -334,7 +404,7 @@ class EnhancedAIMarketAssistant:
     async def _empty_dict(self):
         return {}
     
-    async def generate_prediction_markets_async(self, query: str, num_suggestions: int = 6) -> List[MarketSuggestion]:
+    async def generate_prediction_markets_async(self, query: str, num_suggestions: int = 10) -> List[MarketSuggestion]:
         """Generate prediction markets with real-time data integration"""
         if not self.gemini_client:
             return self._fallback_suggestions(query)
@@ -359,43 +429,79 @@ REAL-TIME DATA CONTEXT:
 Generate {num_suggestions} relevant yes/no prediction market suggestions.
 Use current trends, news, and social sentiment to inform probabilities.
 
-Return ONLY a JSON array with these fields for each suggestion:
-- title: Concise title
-- question: Clear yes/no question
-- description: 1-2 sentences
-- context: 2-3 sentences of background
-- resolution_criteria: Detailed criteria
-- sources: Array of 3-4 sources
+CRITICAL JSON FORMATTING RULES:
+- ALL string values must have quotes properly escaped
+- NO newlines or unescaped special characters in string values
+- Use simple, single-line strings for all fields
+- Keep descriptions concise (under 100 chars)
+- Ensure valid JSON syntax throughout
+
+Return ONLY a valid JSON array with these fields for each suggestion:
+- title: Concise title (under 80 chars, no special chars)
+- question: Clear yes/no question (under 100 chars)
+- description: Brief 1 sentence description
+- context: Brief 1-2 sentence background
+- resolution_criteria: Simple, clear criteria (1-2 sentences)
+- sources: Array of 3 source strings
 - end_date: Future date in DD/MM/YYYY HH:MM format
-- category: Category string
-- ai_probability: Number between 0.1-0.9
-- confidence: Number between 0.3-0.8
-- sentiment_score: Number between 0-1
-- key_factors: Array of 3-5 strings
+- category: Single word category
+- ai_probability: Number between 0.1 and 0.9
+- confidence: Number between 0.3 and 0.8
+- sentiment_score: Number between 0 and 1
+- key_factors: Array of 3-5 short strings (each under 50 chars)
+
+Example format:
+[{{"title": "Bitcoin reaches 100k", "question": "Will Bitcoin exceed $100,000 by end of 2024?", "description": "Market prediction for Bitcoin price milestone.", ...}}]
 """
             
             response = self.gemini_client.generate_content(
                 prompt,
                 generation_config={
-                    "temperature": 0.6,
+                    "temperature": 0.4,
                     "max_output_tokens": 3000
                 }
             )
             
             content = response.text
-            content = self._clean_json_response(content)
+            logger.info(f"Raw Gemini response length: {len(content)} chars")
             
-            suggestions_data = json.loads(content)
+            # Parse with fallback strategies
+            suggestions_data = self._parse_json_with_fallback(content)
+            
+            if not suggestions_data:
+                logger.error("Failed to parse any valid JSON from Gemini response")
+                return self._fallback_suggestions(query)
+            
             suggestions = []
-            
             for data in suggestions_data:
-                data['real_time_data'] = real_time_context
-                suggestions.append(MarketSuggestion(**data))
+                try:
+                    # Ensure all required fields exist with defaults
+                    data.setdefault('title', 'Market Prediction')
+                    data.setdefault('question', 'Will this event occur?')
+                    data.setdefault('description', 'Prediction market question.')
+                    data.setdefault('context', 'Based on current data.')
+                    data.setdefault('resolution_criteria', 'Based on reliable sources.')
+                    data.setdefault('sources', ['API Data'])
+                    data.setdefault('end_date', (datetime.now() + timedelta(days=30)).strftime('%d/%m/%Y %H:%M'))
+                    data.setdefault('category', 'general')
+                    data.setdefault('ai_probability', 0.5)
+                    data.setdefault('confidence', 0.5)
+                    data.setdefault('sentiment_score', 0.5)
+                    data.setdefault('key_factors', ['Unknown factor'])
+                    data['real_time_data'] = real_time_context
+                    
+                    suggestions.append(MarketSuggestion(**data))
+                except Exception as e:
+                    logger.warning(f"Failed to create MarketSuggestion from data: {e}")
+                    continue
+            
+            if not suggestions:
+                return self._fallback_suggestions(query)
             
             return self._validate_market_times(suggestions)
             
         except Exception as e:
-            logger.error(f"Enhanced market generation failed: {e}")
+            logger.error(f"Enhanced market generation failed: {e}", exc_info=True)
             return self._fallback_suggestions(query)
     
     async def get_trending_news_async(self, categories: List[str] = None, limit: int = 10) -> List[NewsItem]:
@@ -514,17 +620,6 @@ Return ONLY a JSON array with these fields for each suggestion:
         
         return '\n'.join(parts)
     
-    def _clean_json_response(self, content: str) -> str:
-        """Clean Gemini's JSON response"""
-        content = content.strip()
-        if content.startswith('```json'):
-            content = content[7:]
-        if content.startswith('```'):
-            content = content[3:]
-        if content.endswith('```'):
-            content = content[:-3]
-        return content.strip()
-    
     def _validate_market_times(self, suggestions: List[MarketSuggestion]) -> List[MarketSuggestion]:
         """Validate market end times"""
         current_time = datetime.now()
@@ -594,7 +689,7 @@ class EnhancedPredictionAPI:
             try:
                 data = request.json
                 query = data.get('query', '')
-                num_suggestions = data.get('num_suggestions', 10)
+                num_suggestions = data.get('num_suggestions', 6)
                 
                 if not query:
                     return jsonify({'success': False, 'error': 'Query is required'}), 400
@@ -835,13 +930,13 @@ class EnhancedPredictionAPI:
                     'sports': ['sports', 'nfl', 'nba', 'soccer', 'baseball'],
                     'economics': ['economics', 'economy', 'investing']
                 },
-                'note': 'Enhanced with Reddit OAuth authentication'
+                'note': 'Enhanced with Reddit OAuth authentication and robust JSON parsing'
             })
     
     def run(self, host='0.0.0.0', port=8000, debug=False):
         logger.info(f"Starting Enhanced Prediction API Server on {host}:{port}")
         logger.info(f"Integrations: Gemini {'✓' if Config.GEMINI_API_KEY else '✗'}, NewsAPI {'✓' if Config.NEWS_API_KEY else '✗'}, AlphaVantage {'✓' if Config.ALPHA_VANTAGE_API_KEY else '✗'}, Reddit OAuth {'✓' if Config.REDDIT_CLIENT_ID else '✗'}")
-        logger.info("Features: Reddit OAuth authentication for reliable data access")
+        logger.info("Features: Reddit OAuth authentication + Advanced JSON parsing")
         logger.info("Supported categories: crypto, tech, politics, sports, economics")
         
         if not Config.GEMINI_API_KEY:
