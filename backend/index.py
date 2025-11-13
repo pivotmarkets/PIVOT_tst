@@ -271,7 +271,7 @@ class EnhancedAIMarketAssistant:
         if Config.GEMINI_API_KEY:
             try:
                 genai.configure(api_key=Config.GEMINI_API_KEY)
-                self.gemini_client = genai.GenerativeModel('gemini-2.0-flash')
+                self.gemini_client = genai.GenerativeModel('gemini-2.5-flash')
             except Exception as e:
                 logger.error(f"Failed to initialize Gemini client: {e}")
                 self.gemini_client = None
