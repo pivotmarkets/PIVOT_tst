@@ -594,7 +594,7 @@ class EnhancedPredictionAPI:
             try:
                 data = request.json
                 query = data.get('query', '')
-                num_suggestions = data.get('num_suggestions', 10)
+                num_suggestions = data.get('num_suggestions', 6)
                 
                 if not query:
                     return jsonify({'success': False, 'error': 'Query is required'}), 400
