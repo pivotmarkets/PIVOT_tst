@@ -334,7 +334,7 @@ class EnhancedAIMarketAssistant:
     async def _empty_dict(self):
         return {}
     
-    async def generate_prediction_markets_async(self, query: str, num_suggestions: int = 10) -> List[MarketSuggestion]:
+    async def generate_prediction_markets_async(self, query: str, num_suggestions: int = 6) -> List[MarketSuggestion]:
         """Generate prediction markets with real-time data integration"""
         if not self.gemini_client:
             return self._fallback_suggestions(query)
